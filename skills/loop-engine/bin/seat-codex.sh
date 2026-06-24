@@ -18,6 +18,7 @@ PRE="$(loop_seat_preamble "${REPO}")"
 # 可选推理强度旋钮：LOOP_CODEX_EFFORT=low|medium|high|xhigh（默认沿用 ~/.codex/config.toml）
 CODEX_OPTS=()
 [ -n "${LOOP_CODEX_EFFORT:-}" ] && CODEX_OPTS+=(-c "model_reasoning_effort=${LOOP_CODEX_EFFORT}")
+[ -n "${LOOP_SEAT_MODEL:-}" ] && CODEX_OPTS+=(-m "${LOOP_SEAT_MODEL}")
 
 case "${MODE}" in
   review)

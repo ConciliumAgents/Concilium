@@ -103,24 +103,33 @@ async function loadDoctor(){
   try{
     const r = await fetch("/api/doctor"); const arr = await r.json();
     doctor = {}; arr.forEach(s=>doctor[s.seat]=s);
-    renderRoster(arr); fillSelects(arr);
-    $("#rosterhint").textContent = "点上方下拉指派总指挥/验证席；勾选哪些上桌由总指挥按特长分派。";
+    renderRoster(arr); refreshSeatedSelects();
+    $("#rosterhint").textContent = "勾选哪些 agent 上桌、各自用哪个脑子；总指挥/验证席只能从已勾选的里选。";
   }catch(e){ $("#rosterhint").innerHTML = '<span class="err">探测失败：'+e+'</span>'; }
 }
 function renderRoster(arr){
   $("#roster").innerHTML = arr.map(s=>{
-    const off = s.available ? "" : " st-off";
-    const alt = (s.alt&&s.alt.length)?`<div class="meta">可切异质：${s.alt.map(a=>a.provider).join(", ")}</div>`:"";
-    return `<div class="seat${off}"><div class="nm">${s.seat} ${s.available?"✓":"✗未装"}</div>
-      <div class="meta">${s.available?(s.model||"")+" · "+(s.provider||""):"不可上桌"}</div>
-      <div class="meta">${s.strength||""}</div>${alt}</div>`;
+    if(!s.available)
+      return `<div class="seat st-off"><div class="nm">${s.seat} ✗未装</div><div class="meta">不可上桌</div></div>`;
+    const ms = s.models||[];
+    const opts = ms.map(m=>`<option value="${m.provider}|${m.model}"${m.default?" selected":""}>${m.provider}/${m.model}</option>`).join("");
+    return `<div class="seat">
+      <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer">
+        <input type="checkbox" class="seat-chk" data-seat="${s.seat}" checked style="width:auto">
+        <span class="nm">${s.seat} ✓</span></label>
+      <div class="meta">${s.strength||""}</div>
+      <label style="margin:6px 0 2px">用哪个脑子</label>
+      <select class="seat-model" data-seat="${s.seat}">${opts||'<option value="|">默认</option>'}</select>
+    </div>`;
   }).join("");
+  document.querySelectorAll(".seat-chk").forEach(c=>c.onchange=refreshSeatedSelects);
 }
-function fillSelects(arr){
-  const avail = arr.filter(s=>s.available).map(s=>s.seat);
-  const opt = a => avail.map(x=>`<option value="${x}"${x===a?" selected":""}>${x}</option>`).join("");
-  $("#commander").innerHTML = opt(avail.includes("claude")?"claude":avail[0]);
-  $("#reviewer").innerHTML  = opt(avail.includes("codex")?"codex":avail[0]);
+function refreshSeatedSelects(){
+  const seated = [...document.querySelectorAll(".seat-chk")].filter(c=>c.checked).map(c=>c.dataset.seat);
+  const cur = {c:$("#commander").value, r:$("#reviewer").value};
+  const opt = a => seated.map(x=>`<option value="${x}"${x===a?" selected":""}>${x}</option>`).join("");
+  $("#commander").innerHTML = opt(seated.includes(cur.c)?cur.c:(seated.includes("claude")?"claude":seated[0]));
+  $("#reviewer").innerHTML  = opt(seated.includes(cur.r)?cur.r:(seated.includes("codex")?"codex":seated[0]));
 }
 
 function boardSeatCard(seat){
@@ -177,10 +186,18 @@ function handle(ev){
 $("#run").onclick=()=>{
   const repo=$("#repo").value.trim(), task=$("#task").value.trim();
   if(!repo||!task){ $("#formerr").textContent="仓库路径和任务都得填。"; return; }
+  const seats=[...document.querySelectorAll(".seat-chk")].filter(c=>c.checked).map(c=>c.dataset.seat);
+  if(!seats.length){ $("#formerr").textContent="至少勾一个 agent 上桌。"; return; }
+  const seat_models={};
+  document.querySelectorAll(".seat-model").forEach(sel=>{
+    if(seats.includes(sel.dataset.seat) && sel.value && sel.value!=="|"){
+      const [provider,model]=sel.value.split("|"); seat_models[sel.dataset.seat]={provider,model};
+    }
+  });
   $("#formerr").textContent="";
   startRun({repo, task, commander:$("#commander").value, reviewer:$("#reviewer").value,
             max_iters:+$("#maxiters").value, test_cmd:$("#testcmd").value.trim(),
-            dry_run:$("#dryrun").checked});
+            dry_run:$("#dryrun").checked, seats, seat_models});
 };
 $("#refresh").onclick=loadDoctor;
 $("#back").onclick=()=>{ $("#board").classList.add("hide"); $("#setup").classList.remove("hide"); };

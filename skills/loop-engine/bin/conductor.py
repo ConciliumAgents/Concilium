@@ -56,7 +56,8 @@ class TextReporter(Reporter):
 
 
 # ---------------- 座位调用 ----------------
-def run_seat(agent: str, mode: str, repo: str, brief: str = "", extra: list[str] | None = None) -> tuple[int, str]:
+def run_seat(agent: str, mode: str, repo: str, brief: str = "", extra: list[str] | None = None,
+             provider: str = "", model: str = "") -> tuple[int, str]:
     extra = extra or []
     if os.environ.get("LOOP_DRY_RUN") == "1":
         return _dry_seat(agent, mode, brief)
@@ -67,13 +68,17 @@ def run_seat(agent: str, mode: str, repo: str, brief: str = "", extra: list[str]
     if brief or mode in ("exec", "review"):
         cmd.append(brief)
     cmd += extra
+    # 每座位的「用哪个脑子」经环境变量下传给座位脚本（不污染全局，仅本次子进程）
+    child_env = dict(os.environ)
+    child_env["LOOP_SEAT_PROVIDER"] = provider or ""
+    child_env["LOOP_SEAT_MODEL"] = model or ""
     # 每个座位调用都设超时 + 进程组强杀：一个 agent 卡死不得拖垮整个循环。
     # start_new_session 让座位脚本及其子孙（codex/hermes node 进程）同属一个进程组，
     # 超时时整组 SIGKILL，避免 codex 等孙进程变孤儿继续空跑。
     timeout = int(os.environ.get("LOOP_SEAT_TIMEOUT", "600"))
     try:
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                             text=True, start_new_session=True)
+                             text=True, start_new_session=True, env=child_env)
     except OSError as e:
         return 1, f"(座位 {agent} 启动失败: {e})"
     try:
@@ -118,33 +123,38 @@ def session_dir(repo: str) -> Path:
     return Path(repo) / ".roundtable" / "sessions" / sid
 
 
-def write_roster(repo: str) -> list[str]:
-    """探测本地座位，写动态 KB/roster.md（总指挥按此派活），返回可用座位名列表。"""
+def write_roster(repo: str, seats=None, seat_models=None) -> list[str]:
+    """探测本地座位，写本会议在座成员的 KB/roster.md（标注各自本次用的脑子），返回在座座位名列表。
+    seats=None 表示所有可用都上桌；否则按白名单。seat_models={agent:{provider,model}}。"""
+    seat_models = seat_models or {}
     detect = BIN / "roster-detect.py"
     try:
         p = subprocess.run([sys.executable, str(detect), "--json"], capture_output=True, text=True, timeout=60)
-        seats = json.loads(p.stdout)
+        detected = json.loads(p.stdout)
     except Exception:
         return []
-    lines = ["# 座位花名册（KB · roster-detect 自动探测，总指挥按此派活）", ""]
-    avail = []
-    for s in seats:
+    lines = ["# 座位花名册（KB · 本会议在座成员，总指挥按特长派活）", ""]
+    seated = []
+    for s in detected:
+        name = s["seat"]
         if not s.get("available"):
-            lines += [f"## ~~{s['seat']}~~（未安装，不可上桌）", ""]
             continue
-        avail.append(s["seat"])
+        if seats is not None and name not in seats:
+            lines += [f"## ~~{name}~~（本次未勾选上桌）", ""]
+            continue
+        seated.append(name)
+        chosen = seat_models.get(name, {})
+        prov = chosen.get("provider") or s.get("provider", "")
+        mod = chosen.get("model") or s.get("model", "")
         eff = f" [{s.get('effort')}]" if s.get("effort") else ""
-        lines += [f"## {s['seat']}（{s.get('model','')} via {s.get('provider','')}{eff}）",
+        lines += [f"## {name}（本次用 {mod} via {prov}{eff}）",
                   f"- 特长：{s.get('strength','')}",
-                  f"- 可任模式：{', '.join(s.get('modes', []))}"]
-        if s.get("alt"):
-            lines.append("- 可切异质后端（异质血统复审席）：" + ", ".join(f"{a['provider']}/{a['model']}" for a in s["alt"]))
-        lines.append("")
+                  f"- 可任模式：{', '.join(s.get('modes', []))}", ""]
     try:
         (session_dir(repo) / "KB" / "roster.md").write_text("\n".join(lines), encoding="utf-8")
     except OSError:
         pass
-    return avail
+    return seated
 
 
 def _claude_project_memory(repo: str) -> Path:
@@ -231,9 +241,16 @@ def extract_plan(text: str) -> list[dict]:
 
 
 # ---------------- 主循环（渲染无关）----------------
-def run(repo, task, commander="claude", reviewer="codex", max_iters=5, test_cmd="", reporter=None) -> int:
+def run(repo, task, commander="claude", reviewer="codex", max_iters=5, test_cmd="",
+        reporter=None, seats=None, seat_models=None) -> int:
     reporter = reporter or TextReporter()
     repo = str(Path(repo).expanduser().resolve())
+    seat_models = seat_models or {}
+
+    def sm(agent):
+        c = seat_models.get(agent, {})
+        return c.get("provider", ""), c.get("model", "")
+
     # 会话 id：项目内按会话隔离记忆（除非外部已指定 LOOP_SESSION 以续接）
     if not os.environ.get("LOOP_SESSION"):
         os.environ["LOOP_SESSION"] = datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + _slug(task)
@@ -241,13 +258,17 @@ def run(repo, task, commander="claude", reviewer="codex", max_iters=5, test_cmd=
     reporter.start(repo, task, commander, reviewer, max_iters)
 
     _, o = sh_capture("roundtable-init.sh", repo, task); reporter.log(o)
-    # 用真实探测覆盖花名册模板，并校验指派的总指挥/验证席确实可用
-    avail = write_roster(repo)
-    if avail:
-        reporter.log(f"[loop-engine] 探测到可上桌座位: {', '.join(avail)}")
-        for role, name in (("总指挥", commander), ("验证席", reviewer)):
-            if name not in avail:
-                reporter.log(f"[loop-engine] ⚠ {role} '{name}' 未探测到可用，可能失败")
+    # 写在座花名册（探测 ∩ 勾选），并跑护栏校验
+    seated = write_roster(repo, seats, seat_models)
+    if seated:
+        reporter.log(f"[loop-engine] 在座: {', '.join(seated)}")
+    for role, name in (("总指挥", commander), ("验证席", reviewer)):
+        if name not in seated:
+            reporter.log(f"[loop-engine] ⚠ {role} '{name}' 不在座（未勾选/未安装），可能失败")
+    if commander == reviewer:
+        reporter.log("[loop-engine] ⚠ 总指挥=验证席：违反 maker≠checker，验证不独立")
+    if len(seated) < 2:
+        reporter.log("[loop-engine] ⚠ 在座少于 2 个：无独立验证，可信度下降")
     nimp = import_memory(repo)
     if nimp:
         reporter.log(f"[loop-engine] 记忆桥：导入 {nimp} 份仓库外项目记忆到黑板")
@@ -258,25 +279,29 @@ def run(repo, task, commander="claude", reviewer="codex", max_iters=5, test_cmd=
         reporter.round(it)
 
         # 总指挥派活
+        cp, cm = sm(commander)
         reporter.seat(commander, "plan", "读花名册分派", phase="start")
-        rc, out = run_seat(commander, "plan", repo, brief=feedback)
+        rc, out = run_seat(commander, "plan", repo, brief=feedback, provider=cp, model=cm)
         reporter.seat(commander, "plan", "", rc, phase="done")
-        plan = extract_plan(out) or [{"agent": commander, "subtask": task}]
+        plan = extract_plan(out)
+        plan = [p for p in plan if p["agent"] in seated] or [{"agent": commander, "subtask": task}]
         reporter.plan(plan)
 
         # 分派执行（验证留到统一一步）
         for p in plan:
             if p["agent"] == reviewer and "验证" in p["subtask"]:
                 continue
+            ep, em = sm(p["agent"])
             reporter.seat(p["agent"], "exec", p["subtask"], phase="start")
-            erc, _ = run_seat(p["agent"], "exec", repo, brief=p["subtask"])
+            erc, _ = run_seat(p["agent"], "exec", repo, brief=p["subtask"], provider=ep, model=em)
             reporter.seat(p["agent"], "exec", p["subtask"], erc, phase="done")
 
         _, o = sh_capture("kb-refresh.sh", repo, test_cmd); reporter.log(o)
 
         # 验证
+        rp, rm = sm(reviewer)
         reporter.seat(reviewer, "review", "独立验证", phase="start")
-        vrc, _ = run_seat(reviewer, "review", repo)
+        vrc, _ = run_seat(reviewer, "review", repo, provider=rp, model=rm)
         verdict = VERDICT_MAP.get(vrc, "ERR")
         reporter.seat(reviewer, "review", "", vrc, phase="done")
         reporter.verdict(reviewer, verdict)
@@ -303,12 +328,14 @@ def build_argparser() -> argparse.ArgumentParser:
     ap.add_argument("--reviewer", default="codex", choices=sorted(AGENTS), help="验证席")
     ap.add_argument("--max-iters", type=int, default=int(os.environ.get("LOOP_MAX_ITERS", "5")))
     ap.add_argument("--test-cmd", default=os.environ.get("LOOP_TEST_CMD", ""))
+    ap.add_argument("--seats", default="", help="只让这些座位上桌，逗号分隔（默认全部可用）")
     return ap
 
 
 def main() -> int:
     a = build_argparser().parse_args()
-    return run(a.repo, a.task, a.commander, a.reviewer, a.max_iters, a.test_cmd, TextReporter())
+    seats = [x.strip() for x in a.seats.split(",") if x.strip()] or None
+    return run(a.repo, a.task, a.commander, a.reviewer, a.max_iters, a.test_cmd, TextReporter(), seats=seats)
 
 
 if __name__ == "__main__":

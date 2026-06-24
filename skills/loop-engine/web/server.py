@@ -58,6 +58,8 @@ def _run_thread(params: dict, q: "queue.Queue"):
             params["repo"], params["task"],
             params.get("commander", "claude"), params.get("reviewer", "codex"),
             int(params.get("max_iters", 5)), params.get("test_cmd", ""), rep,
+            seats=params.get("seats") or None,
+            seat_models=params.get("seat_models") or None,
         )
         q.put({"type": "done", "rc": rc})
     except Exception as e:

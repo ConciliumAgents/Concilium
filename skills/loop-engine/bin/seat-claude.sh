@@ -19,7 +19,8 @@ PRE="$(loop_seat_preamble "${REPO}")"
 
 # 可选模型覆盖（默认用会话/配置的 Opus）
 CL_OPTS=(--add-dir "${REPO}")
-[ -n "${LOOP_CLAUDE_MODEL:-}" ] && CL_OPTS+=(--model "${LOOP_CLAUDE_MODEL}")
+CL_MODEL="${LOOP_SEAT_MODEL:-${LOOP_CLAUDE_MODEL:-}}"
+[ -n "${CL_MODEL}" ] && CL_OPTS+=(--model "${CL_MODEL}")
 
 case "${MODE}" in
   plan)
