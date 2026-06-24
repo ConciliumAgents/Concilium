@@ -2,3 +2,5 @@
 .roundtable/
 __pycache__/
 *.pyc
+*.png
+.playwright-mcp/

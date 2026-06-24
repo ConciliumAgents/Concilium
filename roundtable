@@ -23,6 +23,12 @@ usage() { sed -n '2,6p' "$src" | sed 's/^# \{0,1\}//'; }
 if [ "$#" -eq 0 ]; then usage; exit 0; fi
 case "${1:-}" in -h|--help) usage; exit 0;; esac
 
+# web：启动 WebUI（推荐——比终端友好）
+if [ "${1:-}" = "web" ] || [ "${1:-}" = "--web" ]; then
+  shift
+  exec python3 "$SKILL/web/server.py" ${@+"$@"}
+fi
+
 # --doctor：只探座位，不开会
 if [ "${1:-}" = "--doctor" ]; then
   exec python3 "$SKILL/bin/roster-detect.py"
