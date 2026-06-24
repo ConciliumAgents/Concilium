@@ -11,7 +11,7 @@ SSE 端点把队列实时流给浏览器。仅 127.0.0.1，不对外。
   GET  /api/events?run=  → SSE 实时事件流
 """
 from __future__ import annotations
-import json, os, queue, subprocess, sys, threading, webbrowser
+import json, os, queue, secrets, subprocess, sys, threading, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
@@ -24,6 +24,10 @@ import conductor  # noqa: E402
 RUNS: dict[str, dict] = {}   # run_id -> {"q": Queue}
 _seq = {"n": 0}
 _lock = threading.Lock()
+
+# 启动时生成的 CSRF token：服务 index.html 时注入页面（meta），前端 POST /api/run 必带
+# X-Loop-Token。SSE（EventSource）不能带自定义头，故只校验 POST，不校验 GET /api/events。
+TOKEN = secrets.token_urlsafe(32)
 
 
 class WebReporter(conductor.Reporter):
@@ -106,6 +110,7 @@ class Handler(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         if u.path in ("/", "/index.html"):
             html = (HERE / "index.html").read_bytes()
+            html = html.replace(b"__LOOP_TOKEN__", TOKEN.encode("utf-8"))
             return self._send(200, html, "text/html; charset=utf-8")
         if u.path == "/api/doctor":
             p = subprocess.run([sys.executable, str(BIN / "roster-detect.py"), "--json"],
@@ -148,6 +153,8 @@ class Handler(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         if u.path != "/api/run":
             return self._send(404, b'{"error":"not found"}')
+        if not secrets.compare_digest(self.headers.get("X-Loop-Token", ""), TOKEN):
+            return self._send(403, b'{"error":"bad or missing token"}')
         n = int(self.headers.get("Content-Length", "0"))
         params = json.loads(self.rfile.read(n) or b"{}")
         if not params.get("repo") or not params.get("task"):

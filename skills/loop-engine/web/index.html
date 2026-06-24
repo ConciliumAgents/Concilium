@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="loop-token" content="__LOOP_TOKEN__">
 <title>圆桌会议 · Loop Engine</title>
 <style>
   :root{--bg:#0f1420;--card:#1a2030;--line:#2a3344;--fg:#e6edf3;--dim:#8b98a9;--cyan:#39c5cf;--green:#3fb950;--red:#f85149;--yellow:#d29922;}
@@ -102,6 +103,7 @@
 <script>
 const $ = s => document.querySelector(s);
 const SEATS = ["claude","codex","hermes"];
+const LOOP_TOKEN = document.querySelector('meta[name="loop-token"]')?.content || "";  // server 启动时注入，POST /api/run 必带
 let doctor = {};
 
 async function loadDoctor(){
@@ -162,7 +164,7 @@ function startRun(params){
   $("#role-"+params.commander) && ($("#role-"+params.commander).textContent="[总指挥]");
   $("#role-"+params.reviewer) && ($("#role-"+params.reviewer).textContent+=" [验证]");
 
-  fetch("/api/run",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(params)})
+  fetch("/api/run",{method:"POST",headers:{"Content-Type":"application/json","X-Loop-Token":LOOP_TOKEN},body:JSON.stringify(params)})
     .then(r=>r.json()).then(({run_id,error})=>{
       if(error){ logLine("启动失败："+error,true); return; }
       const es=new EventSource("/api/events?run="+run_id);
