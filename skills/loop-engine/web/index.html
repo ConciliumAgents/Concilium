@@ -37,6 +37,9 @@
   .b-RUN{background:rgba(57,197,207,.18);color:var(--cyan)}
   #log{background:#0c111b;border:1px solid var(--line);border-radius:8px;padding:10px;height:260px;overflow:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;white-space:pre-wrap}
   #log .l{color:var(--dim)}#log .l.hi{color:var(--fg)}
+  #transcripts details{background:#0c111b;border:1px solid var(--line);border-radius:6px;margin:6px 0;padding:6px 10px}
+  #transcripts summary{cursor:pointer;color:var(--cyan);font-size:12px}
+  #transcripts pre{white-space:pre-wrap;font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--fg);max-height:320px;overflow:auto;margin:8px 0 0}
   .hide{display:none}
   .hint{font-size:11px;color:var(--dim);margin-top:6px}
   .err{color:var(--red)}
@@ -90,6 +93,8 @@
     <div class="seats" id="boardseats"></div>
     <label style="margin-top:14px">会议日志</label>
     <div id="log"></div>
+    <label style="margin-top:14px">各座位发言（点开看完整产出）</label>
+    <div id="transcripts"></div>
   </section>
 </main>
 
@@ -151,7 +156,7 @@ function setSeat(seat, st, txt){
 function startRun(params){
   $("#setup").classList.add("hide"); $("#board").classList.remove("hide");
   $("#boardseats").innerHTML = SEATS.map(boardSeatCard).join("");
-  $("#log").innerHTML=""; $("#round").textContent="0";
+  $("#log").innerHTML=""; $("#transcripts").innerHTML=""; $("#round").textContent="0";
   const vb=$("#verdict"); vb.className="badge b-RUN"; vb.textContent="运行中";
   $("#role-"+params.commander) && ($("#role-"+params.commander).textContent="[总指挥]");
   $("#role-"+params.reviewer) && ($("#role-"+params.reviewer).textContent+=" [验证]");
@@ -176,6 +181,12 @@ function handle(ev){
       break;
     case "verdict":{ const vb=$("#verdict"); vb.className="badge b-"+(ev.verdict||"RUN"); vb.textContent=ev.verdict; logLine("裁决："+ev.reviewer+" → "+ev.verdict,true); break; }
     case "log": logLine(ev.msg); break;
+    case "transcript":{
+      const el=$("#transcripts"); const d=document.createElement("details");
+      const sm=document.createElement("summary"); sm.textContent=`第${$("#round").textContent}轮 · ${ev.agent} [${ev.mode}]`;
+      const pre=document.createElement("pre"); pre.textContent=ev.text;
+      d.appendChild(sm); d.appendChild(pre); el.appendChild(d); break;
+    }
     case "finish":{ const vb=$("#verdict"); const m={PASS:"✅ 通过收工",BLOCK:"被拦下",ERR:"验证ERR",CAP:"触顶交还人工"}[ev.status]||ev.status;
             vb.className="badge b-"+(ev.status==="PASS"?"PASS":"BLOCK"); vb.textContent=m; logLine(m,true); break; }
     case "error": logLine("错误："+ev.msg,true); break;

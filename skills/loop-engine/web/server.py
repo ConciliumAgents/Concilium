@@ -39,6 +39,10 @@ class WebReporter(conductor.Reporter):
         self._emit(type="seat", agent=agent, mode=mode, subtask=subtask, rc=rc, phase=phase)
     def verdict(self, reviewer, v): self._emit(type="verdict", reviewer=reviewer, verdict=v)
     def finish(self, status, it): self._emit(type="finish", status=status, it=it)
+    def transcript(self, agent, mode, text):
+        t = (text or "").strip()
+        if t:
+            self._emit(type="transcript", agent=agent, mode=mode, text=t[:8000])
     def log(self, msg):
         import re
         for line in str(msg).splitlines():

@@ -28,6 +28,7 @@ class Reporter:
     def verdict(self, reviewer, v): ...
     def finish(self, status, it): ...
     def log(self, msg): ...
+    def transcript(self, agent, mode, text): ...
 
 
 class TextReporter(Reporter):
@@ -53,6 +54,10 @@ class TextReporter(Reporter):
     def log(self, msg):
         if msg.strip():
             print(f"\033[2m{msg.rstrip()}\033[0m", file=sys.stderr, flush=True)
+    def transcript(self, agent, mode, text):
+        t = (text or "").strip()
+        if t:
+            print(f"\n\033[2m┄┄ {agent} [{mode}] 发言 ┄┄\033[0m\n{t[:4000]}", flush=True)
 
 
 # ---------------- 座位调用 ----------------
@@ -283,6 +288,7 @@ def run(repo, task, commander="claude", reviewer="codex", max_iters=5, test_cmd=
         reporter.seat(commander, "plan", "读花名册分派", phase="start")
         rc, out = run_seat(commander, "plan", repo, brief=feedback, provider=cp, model=cm)
         reporter.seat(commander, "plan", "", rc, phase="done")
+        reporter.transcript(commander, "plan", out)
         plan = extract_plan(out)
         plan = [p for p in plan if p["agent"] in seated] or [{"agent": commander, "subtask": task}]
         reporter.plan(plan)
@@ -293,17 +299,19 @@ def run(repo, task, commander="claude", reviewer="codex", max_iters=5, test_cmd=
                 continue
             ep, em = sm(p["agent"])
             reporter.seat(p["agent"], "exec", p["subtask"], phase="start")
-            erc, _ = run_seat(p["agent"], "exec", repo, brief=p["subtask"], provider=ep, model=em)
+            erc, eout = run_seat(p["agent"], "exec", repo, brief=p["subtask"], provider=ep, model=em)
             reporter.seat(p["agent"], "exec", p["subtask"], erc, phase="done")
+            reporter.transcript(p["agent"], "exec", eout)
 
         _, o = sh_capture("kb-refresh.sh", repo, test_cmd); reporter.log(o)
 
         # 验证
         rp, rm = sm(reviewer)
         reporter.seat(reviewer, "review", "独立验证", phase="start")
-        vrc, _ = run_seat(reviewer, "review", repo, provider=rp, model=rm)
+        vrc, vout = run_seat(reviewer, "review", repo, provider=rp, model=rm)
         verdict = VERDICT_MAP.get(vrc, "ERR")
         reporter.seat(reviewer, "review", "", vrc, phase="done")
+        reporter.transcript(reviewer, "review", vout)
         reporter.verdict(reviewer, verdict)
         verdicts.append(verdict)
 
