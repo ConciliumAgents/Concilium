@@ -11,7 +11,7 @@ SSE 端点把队列实时流给浏览器。仅 127.0.0.1，不对外。
   GET  /api/events?run=  → SSE 实时事件流
 """
 from __future__ import annotations
-import json, os, queue, sys, threading, webbrowser
+import json, os, queue, subprocess, sys, threading, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
@@ -71,6 +71,27 @@ def _run_thread(params: dict, q: "queue.Queue"):
         q.put({"type": "done", "rc": -1})
 
 
+def project_info(repo: str) -> dict:
+    """项目自检：是不是 git 仓库、能桥接到几份该项目的 Claude 记忆。"""
+    p = Path(repo).expanduser()
+    out = {"exists": p.is_dir(), "is_git": False, "claude_memory": 0, "memory_files": []}
+    if not p.is_dir():
+        return out
+    repo_abs = str(p.resolve())
+    try:
+        r = subprocess.run(["git", "-C", repo_abs, "rev-parse", "--is-inside-work-tree"],
+                           capture_output=True, text=True, timeout=5)
+        out["is_git"] = (r.returncode == 0 and "true" in r.stdout)
+    except Exception:
+        pass
+    md = conductor._claude_project_memory(repo_abs)
+    if md.is_dir():
+        files = [f.name for f in md.glob("*.md")]
+        out["claude_memory"] = len(files)
+        out["memory_files"] = files[:10]
+    return out
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a): pass  # 静音默认访问日志
 
@@ -87,10 +108,12 @@ class Handler(BaseHTTPRequestHandler):
             html = (HERE / "index.html").read_bytes()
             return self._send(200, html, "text/html; charset=utf-8")
         if u.path == "/api/doctor":
-            import subprocess
             p = subprocess.run([sys.executable, str(BIN / "roster-detect.py"), "--json"],
                                capture_output=True, text=True, timeout=60)
             return self._send(200, p.stdout.encode("utf-8"))
+        if u.path == "/api/project":
+            repo = parse_qs(u.query).get("repo", [""])[0]
+            return self._send(200, json.dumps(project_info(repo), ensure_ascii=False).encode("utf-8"))
         if u.path == "/api/events":
             run_id = (parse_qs(u.query).get("run", [""])[0])
             run = RUNS.get(run_id)

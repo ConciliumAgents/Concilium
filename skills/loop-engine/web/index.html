@@ -55,8 +55,9 @@
   <section class="card" id="setup">
     <div class="row">
       <div>
-        <label>目标仓库路径（必须是 git 仓库）</label>
-        <input id="repo" placeholder="/Users/you/some-git-repo">
+        <label>本地项目文件夹（git 仓库）</label>
+        <input id="repo" placeholder="/Users/you/your-project">
+        <div class="hint" id="projinfo">输入路径后自动自检：是否 git 仓库、能桥接几份该项目的 Claude 记忆上桌。</div>
       </div>
     </div>
     <label>任务（要圆桌做什么）</label>
@@ -212,6 +213,21 @@ $("#run").onclick=()=>{
 };
 $("#refresh").onclick=loadDoctor;
 $("#back").onclick=()=>{ $("#board").classList.add("hide"); $("#setup").classList.remove("hide"); };
+
+let projT;
+$("#repo").addEventListener("input",()=>{ clearTimeout(projT); projT=setTimeout(checkProject,500); });
+async function checkProject(){
+  const repo=$("#repo").value.trim();
+  if(!repo){ $("#projinfo").textContent=""; return; }
+  try{
+    const d=await (await fetch("/api/project?repo="+encodeURIComponent(repo))).json();
+    if(!d.exists){ $("#projinfo").innerHTML='<span class="err">⚠ 路径不存在</span>'; return; }
+    if(!d.is_git){ $("#projinfo").innerHTML='<span class="err">⚠ 不是 git 仓库（圆桌靠 git 当记忆；先在该目录 git init 再来）</span>'; return; }
+    let s='✓ git 仓库';
+    s += d.claude_memory>0 ? ` · 检测到 ${d.claude_memory} 份该项目的 Claude 记忆，将一并桥接上桌` : ' · 未发现该项目的 Claude 记忆（首次跑正常）';
+    $("#projinfo").innerHTML='<span style="color:var(--green)">'+s+'</span>';
+  }catch(e){ $("#projinfo").textContent=''; }
+}
 loadDoctor();
 </script>
 </body>
