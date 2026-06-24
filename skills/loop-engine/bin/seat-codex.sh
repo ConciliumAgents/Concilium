@@ -17,8 +17,9 @@ PRE="$(loop_seat_preamble "${REPO}")"
 
 # 可选推理强度旋钮：LOOP_CODEX_EFFORT=low|medium|high|xhigh（默认沿用 ~/.codex/config.toml）
 CODEX_OPTS=()
-# codex 配置默认 xhigh 太慢；圆桌里默认降到 medium（要更快 LOOP_CODEX_EFFORT=low，要更准 xhigh）
-CODEX_OPTS+=(-c "model_reasoning_effort=${LOOP_CODEX_EFFORT:-medium}")
+# 默认沿用 ~/.codex/config.toml 的推理档（用户偏好 xhigh 满血）；要更快才显式设 LOOP_CODEX_EFFORT=low|medium。
+# 提速的正路是给验证席换快模型（如 DeepSeek），而非把 codex 调蠢。
+[ -n "${LOOP_CODEX_EFFORT:-}" ] && CODEX_OPTS+=(-c "model_reasoning_effort=${LOOP_CODEX_EFFORT}")
 [ -n "${LOOP_SEAT_MODEL:-}" ] && CODEX_OPTS+=(-m "${LOOP_SEAT_MODEL}")
 
 case "${MODE}" in
