@@ -71,7 +71,7 @@
     </div>
     <div class="chk"><input type="checkbox" id="dryrun"><label style="margin:0">演练模式（dry-run，用桩不真调 agent，先看流程）</label></div>
 
-    <label style="margin-top:16px">座位探测</label>
+    <label style="margin-top:16px">上桌 agent（本次自检到的）</label>
     <div class="seats" id="roster"></div>
     <div class="hint" id="rosterhint">加载中…</div>
 
@@ -113,20 +113,20 @@ async function loadDoctor(){
   }catch(e){ $("#rosterhint").innerHTML = '<span class="err">探测失败：'+e+'</span>'; }
 }
 function renderRoster(arr){
-  $("#roster").innerHTML = arr.map(s=>{
-    if(!s.available)
-      return `<div class="seat st-off"><div class="nm">${s.seat} ✗未装</div><div class="meta">不可上桌</div></div>`;
+  // 只显示这次自检「检测到」的 agent（列表里出现即代表检测到，不再单独标 ✓）
+  const avail = arr.filter(s=>s.available);
+  $("#roster").innerHTML = avail.map(s=>{
     const ms = s.models||[];
     const opts = ms.map(m=>`<option value="${m.provider}|${m.model}"${m.default?" selected":""}>${m.provider}/${m.model}</option>`).join("");
     return `<div class="seat">
       <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer">
         <input type="checkbox" class="seat-chk" data-seat="${s.seat}" checked style="width:auto">
-        <span class="nm">${s.seat} ✓</span></label>
+        <span class="nm">${s.seat}</span></label>
       <div class="meta">${s.strength||""}</div>
       <label style="margin:6px 0 2px">用哪个脑子</label>
       <select class="seat-model" data-seat="${s.seat}">${opts||'<option value="|">默认</option>'}</select>
     </div>`;
-  }).join("");
+  }).join("") || '<div class="hint err">没自检到任何可用 agent</div>';
   document.querySelectorAll(".seat-chk").forEach(c=>c.onchange=refreshSeatedSelects);
 }
 function refreshSeatedSelects(){
