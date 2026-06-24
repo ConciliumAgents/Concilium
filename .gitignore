@@ -1,0 +1,4 @@
+.venv/
+.roundtable/
+__pycache__/
+*.pyc
