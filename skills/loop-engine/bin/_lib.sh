@@ -36,16 +36,22 @@ loop_resolve_repo() {
   printf '%s' "$repo"
 }
 
-# ---- 会议桌目录：<repo>/.roundtable/（含 KB / minutes 子目录）----
+# ---- 会议桌根目录：<repo>/.roundtable/ ----
+loop_root() { printf '%s' "$1/$LOOP_TABLE_DIRNAME"; }
+
+# ---- 会话目录：<repo>/.roundtable/sessions/<会话id>/（含 KB / minutes）----
+# 会话 id 由 conductor 经 LOOP_SESSION 下传；standalone 调用回退到 default。
+# 记忆按「项目（仓库）」+「会话」两级隔离。
 loop_table_dir() {
-  local repo="$1" dir="$1/$LOOP_TABLE_DIRNAME"
+  local repo="$1" sid="${LOOP_SESSION:-default}"
+  local dir="$repo/$LOOP_TABLE_DIRNAME/sessions/$sid"
   mkdir -p "$dir/KB" "$dir/minutes"
   printf '%s' "$dir"
 }
 
-# ---- 当前轮次：从 roundtable.json 读，缺省 1 ----
+# ---- 当前轮次：从会话的 roundtable.json 读，缺省 1 ----
 loop_iter() {
-  local sf="$1/$LOOP_TABLE_DIRNAME/roundtable.json"
+  local sf; sf="$(loop_table_dir "$1")/roundtable.json"
   if [ -f "$sf" ] && command -v python3 >/dev/null 2>&1; then
     python3 -c "import json,sys;print(json.load(open(sys.argv[1])).get('iter',1))" "$sf" 2>/dev/null || echo 1
   else
@@ -56,7 +62,7 @@ loop_iter() {
 # ---- 用 python3 安全更新 roundtable.json 的某个键（值按字面写入）----
 # 用法: loop_state_set <repo> <key> <value-as-python-literal>
 loop_state_set() {
-  local repo="$1" key="$2" val="$3" sf="$1/$LOOP_TABLE_DIRNAME/roundtable.json"
+  local repo="$1" key="$2" val="$3" sf; sf="$(loop_table_dir "$repo")/roundtable.json"
   command -v python3 >/dev/null 2>&1 || { loop_warn "无 python3，跳过 state 更新"; return 0; }
   python3 - "$sf" "$key" "$val" <<'PY'
 import json,sys,os
@@ -101,15 +107,17 @@ loop_need() { command -v "$1" >/dev/null 2>&1 || loop_die "找不到依赖命令
 # ---- 给座位发言的统一头部（让外脑知道黑板在哪、规矩是什么）----
 # 用法: loop_seat_preamble <repo>
 loop_seat_preamble() {
-  local repo="$1"
+  local repo="$1" rel=".roundtable/sessions/${LOOP_SESSION:-default}"
   cat <<EOF
 你正受邀参加一个"圆桌会议"（Loop Engineering 黑板架构）。这是一次性发言，不是对话。
-共享知识库（黑板）在仓库内 \`$LOOP_TABLE_DIRNAME/KB/\`：
-  - project.md  项目背景/架构/约定
-  - task.md     本轮任务与验收标准
-  - state.md    当前进度/已做决策/开放问题
-  - diff.patch  本轮改动
-  - test-results.txt 最新测试输出
+共享知识库（黑板）在仓库内 \`${rel}/KB/\`：
+  - project.md          项目背景/架构/约定
+  - task.md             本轮任务与验收标准
+  - state.md            当前进度/已做决策/开放问题
+  - roster.md           在座各 agent 的特长
+  - imported-memory.md  从仓库外汇集的项目记忆（CLAUDE.md / Claude 项目记忆 / 过往会话结论）
+  - diff.patch          本轮改动
+  - test-results.txt    最新测试输出
 请**自行读取**这些文件以及仓库源码来获取你需要的信息（self-serve），不要假设上下文已在本 prompt 里给全。
 EOF
 }

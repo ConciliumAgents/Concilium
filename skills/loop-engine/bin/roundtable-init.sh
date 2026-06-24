@@ -7,8 +7,26 @@ source "$SCRIPT_DIR/_lib.sh"
 
 REPO="$(loop_resolve_repo "${1:-}")"
 TASK="${2:-}"
-TABLE="$(loop_table_dir "$REPO")"
+TABLE="$(loop_table_dir "$REPO")"     # 本会话目录 .roundtable/sessions/<id>/
 TPL="$SCRIPT_DIR/../templates"
+
+# 会话级隔离：记 current 指针 + 维护会话索引（供 WebUI 翻历史）
+ROOT="$(loop_root "$REPO")"
+SID="${LOOP_SESSION:-default}"
+printf '%s' "$SID" > "$ROOT/current"
+if command -v python3 >/dev/null 2>&1; then
+  python3 - "$ROOT/index.json" "$SID" "$TASK" <<'PY'
+import json, os, sys
+idx, sid, task = sys.argv[1], sys.argv[2], sys.argv[3]
+d = []
+if os.path.exists(idx):
+    try: d = json.load(open(idx))
+    except Exception: d = []
+if not any(e.get("id") == sid for e in d):
+    d.append({"id": sid, "task": task})
+    json.dump(d, open(idx, "w"), ensure_ascii=False, indent=2)
+PY
+fi
 
 # KB 模板（已存在则不覆盖，保护你已写的内容）
 [ -f "$TABLE/KB/project.md" ] || cp "$TPL/project.md" "$TABLE/KB/project.md"

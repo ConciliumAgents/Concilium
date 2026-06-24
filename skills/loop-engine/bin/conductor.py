@@ -11,7 +11,7 @@
 依赖：仅 Python 标准库。
 """
 from __future__ import annotations
-import argparse, json, os, re, signal, subprocess, sys
+import argparse, datetime, json, os, re, signal, subprocess, sys
 from pathlib import Path
 
 BIN = Path(__file__).resolve().parent
@@ -107,6 +107,17 @@ def sh_capture(script: str, *args: str) -> tuple[int, str]:
     return p.returncode, (p.stdout or "") + (p.stderr or "")
 
 
+def _slug(text: str, n: int = 24) -> str:
+    s = re.sub(r"[^0-9A-Za-z一-鿿]+", "-", text).strip("-")
+    return s[:n] or "task"
+
+
+def session_dir(repo: str) -> Path:
+    """当前会话目录 .roundtable/sessions/<LOOP_SESSION>/。"""
+    sid = os.environ.get("LOOP_SESSION", "default")
+    return Path(repo) / ".roundtable" / "sessions" / sid
+
+
 def write_roster(repo: str) -> list[str]:
     """探测本地座位，写动态 KB/roster.md（总指挥按此派活），返回可用座位名列表。"""
     detect = BIN / "roster-detect.py"
@@ -130,10 +141,72 @@ def write_roster(repo: str) -> list[str]:
             lines.append("- 可切异质后端（异质血统复审席）：" + ", ".join(f"{a['provider']}/{a['model']}" for a in s["alt"]))
         lines.append("")
     try:
-        (Path(repo) / ".roundtable" / "KB" / "roster.md").write_text("\n".join(lines), encoding="utf-8")
+        (session_dir(repo) / "KB" / "roster.md").write_text("\n".join(lines), encoding="utf-8")
     except OSError:
         pass
     return avail
+
+
+def _claude_project_memory(repo: str) -> Path:
+    """Claude 按项目存记忆的目录：路径 / → - 映射。"""
+    mapped = repo.replace("/", "-")
+    return Path.home() / ".claude" / "projects" / mapped / "memory"
+
+
+def import_memory(repo: str) -> int:
+    """记忆桥（进）：把仓库外的项目记忆汇集进本会话 KB/imported-memory.md，
+    让 codex/hermes 这些读不到 Claude 私库的座位也看到完整项目。只读拉取。"""
+    parts = ["# 导入的项目记忆（memory-bridge 汇集 · 所有座位自取）", ""]
+    n = 0
+    cm = Path(repo) / "CLAUDE.md"
+    if cm.exists():
+        parts += ["## 仓库 CLAUDE.md", cm.read_text(encoding="utf-8", errors="replace")[:4000], ""]; n += 1
+    md = _claude_project_memory(repo)
+    if md.is_dir():
+        for f in sorted(md.glob("*.md")):
+            parts += [f"## Claude 项目记忆 · {f.name}", f.read_text(encoding="utf-8", errors="replace")[:3000], ""]; n += 1
+    cur = os.environ.get("LOOP_SESSION", "")
+    sroot = Path(repo) / ".roundtable" / "sessions"
+    if sroot.is_dir():
+        for sd in sorted(sroot.iterdir()):
+            if sd.name == cur:
+                continue
+            c = sd / "KB" / "conclusion.md"
+            if c.exists():
+                parts += [f"## 过往会话结论 · {sd.name}", c.read_text(encoding="utf-8", errors="replace")[:1500], ""]; n += 1
+    try:
+        (session_dir(repo) / "KB" / "imported-memory.md").write_text("\n".join(parts), encoding="utf-8")
+    except OSError:
+        pass
+    return n
+
+
+def write_conclusion(repo: str, task: str, status: str, rounds: int, verdicts: list) -> None:
+    """会议结论落盘到本会话 KB/conclusion.md（供人看 + 下次跨会话继承）。"""
+    sd = session_dir(repo)
+    def _git(*a):
+        try:
+            return subprocess.run(["git", "-C", repo, *a], capture_output=True, text=True, timeout=10).stdout.strip()
+        except Exception:
+            return ""
+    diffstat = _git("diff", "--stat", "HEAD")
+    log = _git("log", "--oneline", "--grep", "loop-engine", "-n", "20")
+    minutes = sorted((sd / "minutes").glob("*.md")) if (sd / "minutes").is_dir() else []
+    minute_lines = [f"- {m.name}" for m in minutes] or ["（无）"]
+    lines = [
+        f"# 圆桌会议结论 · {os.environ.get('LOOP_SESSION', '')}", "",
+        f"- 任务：{task}",
+        f"- 结论：**{status}**（共 {rounds} 轮）",
+        f"- 各轮裁决：{', '.join(verdicts) or '—'}", "",
+        "## 改动文件（git diff --stat HEAD）", "```", diffstat or "（无未提交改动；见下方 checkpoint 提交）", "```", "",
+        "## checkpoint 提交", "```", log or "（无）", "```", "",
+        "## 座位发言纪要（详见 minutes/）", *minute_lines, "",
+        "## 剩余风险 / 下一步", "如结论为 BLOCK/CAP，请读 minutes/ 中验证席的发现。",
+    ]
+    try:
+        (sd / "KB" / "conclusion.md").write_text("\n".join(lines), encoding="utf-8")
+    except OSError:
+        pass
 
 
 def extract_plan(text: str) -> list[dict]:
@@ -161,6 +234,10 @@ def extract_plan(text: str) -> list[dict]:
 def run(repo, task, commander="claude", reviewer="codex", max_iters=5, test_cmd="", reporter=None) -> int:
     reporter = reporter or TextReporter()
     repo = str(Path(repo).expanduser().resolve())
+    # 会话 id：项目内按会话隔离记忆（除非外部已指定 LOOP_SESSION 以续接）
+    if not os.environ.get("LOOP_SESSION"):
+        os.environ["LOOP_SESSION"] = datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + _slug(task)
+    reporter.log(f"[conductor] 会话: {os.environ['LOOP_SESSION']}")
     reporter.start(repo, task, commander, reviewer, max_iters)
 
     _, o = sh_capture("roundtable-init.sh", repo, task); reporter.log(o)
@@ -171,9 +248,12 @@ def run(repo, task, commander="claude", reviewer="codex", max_iters=5, test_cmd=
         for role, name in (("总指挥", commander), ("验证席", reviewer)):
             if name not in avail:
                 reporter.log(f"[loop-engine] ⚠ {role} '{name}' 未探测到可用，可能失败")
+    nimp = import_memory(repo)
+    if nimp:
+        reporter.log(f"[loop-engine] 记忆桥：导入 {nimp} 份仓库外项目记忆到黑板")
     _, o = sh_capture("kb-refresh.sh", repo, test_cmd); reporter.log(o)
 
-    feedback = ""
+    feedback, verdicts, status, final_it = "", [], None, max_iters
     for it in range(1, max_iters + 1):
         reporter.round(it)
 
@@ -200,16 +280,19 @@ def run(repo, task, commander="claude", reviewer="codex", max_iters=5, test_cmd=
         verdict = VERDICT_MAP.get(vrc, "ERR")
         reporter.seat(reviewer, "review", "", vrc, phase="done")
         reporter.verdict(reviewer, verdict)
+        verdicts.append(verdict)
 
         _, o = sh_capture("checkpoint.sh", repo, f"{commander}指挥第{it}轮 裁决{verdict}"); reporter.log(o)
 
-        if verdict == "PASS":
-            reporter.finish("PASS", it); return 0
-        if verdict == "ERR":
-            reporter.finish("ERR", it); return 1
-        feedback = "上一轮验证 BLOCK，请读 .roundtable/minutes 里验证席的发现并修正。"
+        if verdict in ("PASS", "ERR"):
+            status, final_it = verdict, it
+            break
+        feedback = "上一轮验证 BLOCK，请读 minutes/ 里验证席的发现并修正。"
 
-    reporter.finish("CAP", max_iters); return 2
+    status = status or "CAP"
+    write_conclusion(repo, task, status, final_it, verdicts)
+    reporter.finish(status, final_it)
+    return {"PASS": 0, "ERR": 1, "CAP": 2}[status]
 
 
 def build_argparser() -> argparse.ArgumentParser:
