@@ -137,9 +137,7 @@ function refreshSeatedSelects(){
   const cur = {c:$("#commander").value, r:$("#reviewer").value};
   const opt = a => seated.map(x=>`<option value="${x}"${x===a?" selected":""}>${x}</option>`).join("");
   $("#commander").innerHTML = opt(seated.includes(cur.c)?cur.c:(seated.includes("claude")?"claude":seated[0]));
-  // 验证席多一个 chat（DeepSeek 纯脑快审，不需在座）
-  const rOpts = seated.concat(["chat"]);
-  $("#reviewer").innerHTML = rOpts.map(x=>`<option value="${x}"${x===cur.r?" selected":""}>${x==="chat"?"chat（DeepSeek 快审）":x}</option>`).join("");
+  $("#reviewer").innerHTML  = opt(seated.includes(cur.r)?cur.r:(seated.includes("codex")?"codex":seated[0]));
 }
 
 function boardSeatCard(seat){

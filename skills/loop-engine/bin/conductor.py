@@ -268,8 +268,6 @@ def run(repo, task, commander="claude", reviewer="codex", max_iters=5, test_cmd=
     if seated:
         reporter.log(f"[loop-engine] 在座: {', '.join(seated)}")
     for role, name in (("总指挥", commander), ("验证席", reviewer)):
-        if name == "chat":
-            continue  # chat 是纯脑 API 评审席，不需在座
         if name not in seated:
             reporter.log(f"[loop-engine] ⚠ {role} '{name}' 不在座（未勾选/未安装），可能失败")
     if commander == reviewer:
@@ -335,7 +333,7 @@ def build_argparser() -> argparse.ArgumentParser:
     ap.add_argument("--repo", required=True)
     ap.add_argument("--task", required=True)
     ap.add_argument("--commander", default="claude", choices=sorted(AGENTS), help="项目总指挥（你指派）")
-    ap.add_argument("--reviewer", default="codex", choices=sorted(AGENTS | {"chat"}), help="验证席（chat=DeepSeek 纯脑快审）")
+    ap.add_argument("--reviewer", default="codex", choices=sorted(AGENTS), help="验证席")
     ap.add_argument("--max-iters", type=int, default=int(os.environ.get("LOOP_MAX_ITERS", "5")))
     ap.add_argument("--test-cmd", default=os.environ.get("LOOP_TEST_CMD", ""))
     ap.add_argument("--seats", default="", help="只让这些座位上桌，逗号分隔（默认全部可用）")
