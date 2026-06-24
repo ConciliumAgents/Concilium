@@ -22,6 +22,19 @@ EXTRA=()
 [ -n "${PROV}" ]  && EXTRA+=(--provider "${PROV}")
 [ -n "${MODEL}" ] && EXTRA+=(-m "${MODEL}")
 
+# 清理 hermes 会话残留：圆桌的产出已存进黑板 minutes，hermes 侧那条会话是冗余「垃圾」。
+# 调用前记最新会话 id，调用后删掉新冒出来的那条（精准，只删本次新建，绝不碰你的真会话）。
+# 设 LOOP_HERMES_KEEP_SESSION 非空可保留。
+_hs_id() { hermes sessions list --limit 1 2>/dev/null | grep -oE '[0-9]{8}_[0-9]{6}_[0-9a-fA-F]+' | head -1 || true; }
+_hs_clean() {
+  [ -n "${LOOP_HERMES_KEEP_SESSION:-}" ] && return 0
+  local post; post="$(_hs_id)"
+  if [ -n "${post}" ] && [ "${post}" != "${1:-}" ]; then
+    hermes sessions delete "${post}" --yes >/dev/null 2>&1 && loop_log "已清理 hermes 残留会话 ${post}"
+  fi
+}
+HS_PRE="$(_hs_id)"
+
 case "${MODE}" in
   review)
     [ -n "${BRIEF}" ] || BRIEF="审查本轮改动的正确性与潜在风险。"
@@ -42,6 +55,7 @@ case "${MODE}" in
     set -e
     cat "${OUT}"
     loop_log "hermes 退出码=${rc}，纪要: ${OUT}"
+    _hs_clean "${HS_PRE}"
     if [ "${rc}" -ne 0 ]; then
       loop_warn "hermes 进程非零退出 rc=${rc}，判 ERR（多半是用法/网络问题，请人工读 minutes）"
       exit 1
@@ -62,6 +76,7 @@ ${BRIEF}"
     set -e
     cat "${OUT}"
     loop_log "hermes 退出码=${rc}，纪要: ${OUT}"
+    _hs_clean "${HS_PRE}"
     exit "${rc}"
     ;;
   *)
