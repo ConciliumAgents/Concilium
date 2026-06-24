@@ -107,6 +107,35 @@ def sh_capture(script: str, *args: str) -> tuple[int, str]:
     return p.returncode, (p.stdout or "") + (p.stderr or "")
 
 
+def write_roster(repo: str) -> list[str]:
+    """探测本地座位，写动态 KB/roster.md（总指挥按此派活），返回可用座位名列表。"""
+    detect = BIN / "roster-detect.py"
+    try:
+        p = subprocess.run([sys.executable, str(detect), "--json"], capture_output=True, text=True, timeout=60)
+        seats = json.loads(p.stdout)
+    except Exception:
+        return []
+    lines = ["# 座位花名册（KB · roster-detect 自动探测，总指挥按此派活）", ""]
+    avail = []
+    for s in seats:
+        if not s.get("available"):
+            lines += [f"## ~~{s['seat']}~~（未安装，不可上桌）", ""]
+            continue
+        avail.append(s["seat"])
+        eff = f" [{s.get('effort')}]" if s.get("effort") else ""
+        lines += [f"## {s['seat']}（{s.get('model','')} via {s.get('provider','')}{eff}）",
+                  f"- 特长：{s.get('strength','')}",
+                  f"- 可任模式：{', '.join(s.get('modes', []))}"]
+        if s.get("alt"):
+            lines.append("- 可切异质后端（异质血统复审席）：" + ", ".join(f"{a['provider']}/{a['model']}" for a in s["alt"]))
+        lines.append("")
+    try:
+        (Path(repo) / ".roundtable" / "KB" / "roster.md").write_text("\n".join(lines), encoding="utf-8")
+    except OSError:
+        pass
+    return avail
+
+
 def extract_plan(text: str) -> list[dict]:
     m = re.search(r"```json\s*(.+?)```", text, re.S)
     blob = m.group(1) if m else None
@@ -135,6 +164,13 @@ def run(repo, task, commander="claude", reviewer="codex", max_iters=5, test_cmd=
     reporter.start(repo, task, commander, reviewer, max_iters)
 
     _, o = sh_capture("roundtable-init.sh", repo, task); reporter.log(o)
+    # 用真实探测覆盖花名册模板，并校验指派的总指挥/验证席确实可用
+    avail = write_roster(repo)
+    if avail:
+        reporter.log(f"[loop-engine] 探测到可上桌座位: {', '.join(avail)}")
+        for role, name in (("总指挥", commander), ("验证席", reviewer)):
+            if name not in avail:
+                reporter.log(f"[loop-engine] ⚠ {role} '{name}' 未探测到可用，可能失败")
     _, o = sh_capture("kb-refresh.sh", repo, test_cmd); reporter.log(o)
 
     feedback = ""

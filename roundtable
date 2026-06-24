@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# roundtable — 圆桌一键启动器
+#   用法: roundtable --task "<任务>" [--repo <仓库,默认当前目录>] [--commander claude|codex|hermes]
+#                    [--reviewer codex|claude|hermes] [--max-iters N] [--test-cmd "<测试命令>"]
+#   有 .venv+rich → 开 TUI 仪表盘；否则退回纯文本指挥程序。
+#   先探座位: roundtable --doctor
+set -euo pipefail
+
+# --- 解析自身真实位置（支持被软链接到 PATH）---
+src="${BASH_SOURCE[0]}"
+while [ -h "$src" ]; do
+  dir="$(cd -P "$(dirname "$src")" && pwd)"
+  src="$(readlink "$src")"
+  case "$src" in /*) ;; *) src="$dir/$src";; esac
+done
+PROJ="$(cd -P "$(dirname "$src")" && pwd)"
+SKILL="$PROJ/skills/loop-engine"
+VENV_PY="$PROJ/.venv/bin/python"
+
+usage() { sed -n '2,6p' "$src" | sed 's/^# \{0,1\}//'; }
+
+# 无参数 / 求助
+if [ "$#" -eq 0 ]; then usage; exit 0; fi
+case "${1:-}" in -h|--help) usage; exit 0;; esac
+
+# --doctor：只探座位，不开会
+if [ "${1:-}" = "--doctor" ]; then
+  exec python3 "$SKILL/bin/roster-detect.py"
+fi
+
+# 若用户没给 --repo，则默认用当前目录
+inject_repo=true
+for a in ${@+"$@"}; do
+  case "$a" in --repo|--repo=*) inject_repo=false;; esac
+done
+ARGS=()
+$inject_repo && ARGS+=(--repo "$PWD")
+[ "$#" -gt 0 ] && ARGS+=("$@")
+
+# 选引擎：venv+rich 在 → TUI；否则纯文本
+if [ -x "$VENV_PY" ] && "$VENV_PY" -c 'import rich' >/dev/null 2>&1; then
+  exec "$VENV_PY" "$SKILL/tui/tui.py" ${ARGS[@]+"${ARGS[@]}"}
+else
+  echo "[roundtable] 未找到 .venv+rich，退回纯文本模式" >&2
+  exec python3 "$SKILL/bin/conductor.py" ${ARGS[@]+"${ARGS[@]}"}
+fi
