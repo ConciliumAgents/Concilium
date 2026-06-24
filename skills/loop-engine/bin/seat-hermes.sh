@@ -42,6 +42,10 @@ case "${MODE}" in
     set -e
     cat "${OUT}"
     loop_log "hermes 退出码=${rc}，纪要: ${OUT}"
+    if [ "${rc}" -ne 0 ]; then
+      loop_warn "hermes 进程非零退出 rc=${rc}，判 ERR（多半是用法/网络问题，请人工读 minutes）"
+      exit 1
+    fi
     loop_verdict_exit "${OUT}"; exit $?
     ;;
   exec)
