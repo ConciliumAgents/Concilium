@@ -26,6 +26,7 @@ ROLE_DESC = {
     "claude": "Opus · 编排/重构/综合",
     "codex": "gpt-5.5 · 代码验证",
     "hermes": "工具广度 · 可切DeepSeek",
+    "kimi": "K2.7 · 异质评审/强编码",
 }
 STATUS_STYLE = {"idle": "dim", "working": "yellow", "done": "green", "block": "red", "err": "red"}
 

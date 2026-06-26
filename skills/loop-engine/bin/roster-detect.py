@@ -117,8 +117,40 @@ def detect_hermes():
     return d
 
 
+def detect_kimi():
+    # kimi 常装在 ~/.kimi-code/bin（不一定在标准 PATH 上），which 找不到时回退到该路径
+    path = shutil.which("kimi")
+    if not path:
+        cand = HOME / ".kimi-code" / "bin" / "kimi"
+        path = str(cand) if cand.exists() else None
+    d = {"seat": "kimi", "available": bool(path), "path": path or "",
+         "modes": ["plan", "exec", "review"], "provider": "moonshot", "models": []}
+    if not path:
+        return d
+    ver = (_run([path, "--version"], 8).strip().splitlines() or [""])[0]
+    d["version"] = f"Kimi Code {ver}".strip()
+    cfg = HOME / ".kimi-code" / "config.toml"
+    default_model, models_tbl = "kimi-code/kimi-for-coding", {}
+    if cfg.exists():
+        try:
+            import tomllib
+            t = tomllib.loads(cfg.read_text())
+            default_model = str(t.get("default_model", default_model))
+            models_tbl = t.get("models", {}) or {}
+        except Exception:
+            m = re.search(r'default_model\s*=\s*"([^"]+)"', cfg.read_text())
+            default_model = m.group(1) if m else default_model
+    d["model"] = default_model
+    aliases = list(models_tbl.keys()) or [default_model]
+    if default_model not in aliases:
+        aliases.insert(0, default_model)
+    d["models"] = [{"provider": "moonshot", "model": a, "default": (a == default_model)} for a in aliases]
+    d["strength"] = "异质血统（Moonshot K2.7）、强编码；独立第四方评审，挑别家惯性盲区"
+    return d
+
+
 def detect_all():
-    return [detect_claude(), detect_codex(), detect_hermes()]
+    return [detect_claude(), detect_codex(), detect_hermes(), detect_kimi()]
 
 
 def print_table(seats):

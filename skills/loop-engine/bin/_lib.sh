@@ -79,9 +79,10 @@ PY
 }
 
 # ---- 从 agent 输出文件抽 VERDICT 行，落实退出码约定（0=PASS 2=BLOCK 1=ERR）----
+# 注：行首容忍空白——kimi 等座位 headless 文本输出整体带前导缩进，VERDICT 行非顶格。
 loop_verdict_exit() {
   local f="$1" line
-  line="$(grep -aiE '^VERDICT:[[:space:]]*(PASS|BLOCK)' "$f" | tail -1 || true)"
+  line="$(grep -aiE '^[[:space:]]*VERDICT:[[:space:]]*(PASS|BLOCK)' "$f" | tail -1 || true)"
   if   printf '%s' "$line" | grep -qiE 'PASS';  then loop_log "裁决: PASS";  return 0
   elif printf '%s' "$line" | grep -qiE 'BLOCK'; then loop_warn "裁决: BLOCK"; return 2
   else loop_warn "未找到 VERDICT 行——按 ERR 处理，请人工读完整 minutes"; return 1

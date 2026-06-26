@@ -15,7 +15,7 @@ import argparse, datetime, json, os, re, signal, subprocess, sys
 from pathlib import Path
 
 BIN = Path(__file__).resolve().parent
-AGENTS = {"claude", "codex", "hermes"}
+AGENTS = {"claude", "codex", "hermes", "kimi"}
 VERDICT_MAP = {0: "PASS", 2: "BLOCK", 1: "ERR"}
 
 

@@ -23,7 +23,7 @@
   button.ghost{background:transparent;color:var(--cyan);border:1px solid var(--cyan)}
   button:disabled{opacity:.5;cursor:not-allowed}
   .btns{display:flex;gap:10px;margin-top:16px}
-  .seats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:8px}
+  .seats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:8px}
   .seat{background:#0c111b;border:1px solid var(--line);border-radius:8px;padding:10px}
   .seat .nm{font-weight:700}.seat .meta{font-size:11px;color:var(--dim);margin-top:3px}
   .seat .role{font-size:11px;color:var(--cyan)}
@@ -49,7 +49,7 @@
 <body>
 <header>
   <h1>⃝ 圆桌会议 · Loop Engine</h1>
-  <span class="sub">Claude Code 为可指派的总指挥 · codex/hermes 各在原生壳入席 · 本地 127.0.0.1</span>
+  <span class="sub">Claude Code 为可指派的总指挥 · codex/hermes/kimi 各在原生壳入席 · 本地 127.0.0.1</span>
 </header>
 <main>
   <!-- 配置区 -->
@@ -102,7 +102,7 @@
 
 <script>
 const $ = s => document.querySelector(s);
-const SEATS = ["claude","codex","hermes"];
+const SEATS = ["claude","codex","hermes","kimi"];
 const LOOP_TOKEN = document.querySelector('meta[name="loop-token"]')?.content || "";  // server 启动时注入，POST /api/run 必带
 let doctor = {};
 
