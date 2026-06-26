@@ -108,21 +108,85 @@
 
 ---
 
-## §B Claude→Kimi 结构映射 〔占位 · 待 kimi 实证回填〕
+## §B Claude→Kimi 结构映射（kimi 实证席回填）
 
-> **承接方 kimi 座位**须实证调研（非猜测）Kimi Code 如何加载：项目指令、记忆、skills、hooks、settings、MCP。下表为执行席预置的**待回填骨架**（每行右列待 kimi 填实证结论）：
+> 来源：Kimi Code CLI 0.20.1（`~/.kimi-code/bin/kimi --version`）、`kimi --help`、官方文档 <https://moonshotai.github.io/kimi-code/>（本会话 FetchURL 实读），以及本机 `~/.kimi-code/` 实测结构。读不到/未验证的一律标“待补”，不猜。
 
-| Claude 资产 | Claude 载体 | Kimi 对应物（待 kimi 实证） | 直搬/转换/重写/替代 |
+### B.1 总体映射表
+
+| Claude 资产 | Claude 载体 | Kimi 对应物（实证结论） | 承接判定 |
 |---|---|---|---|
-| 项目指令 | `CLAUDE.md`（仓内 + 全局 `~/.claude/CLAUDE.md`） | Kimi 读什么？（`KIMI.md`？`AGENTS.md`？`config.toml` 指针？） | 待定 |
-| 项目记忆 | `~/.claude/projects/<映射>/memory/*.md` + frontmatter schema | Kimi 有无路径映射记忆机制？放哪？格式？ | 待定 |
-| 输出风格 | `~/.claude/output-styles/*.md` | Kimi 有无 persona/output-style？无则降级系统提示 | 大概率替代 |
-| skills | `~/.claude/skills/*/SKILL.md` + 脚本 | Kimi 是否支持 `--skills-dir` / 等价 skill 机制？ | 待定 |
-| hooks | `~/.claude/hooks/*.sh` + settings 接线 | Kimi hook 机制（事件名/接线位置）？ | 待定 |
-| settings/权限 | `settings.json` / `settings.local.json` | Kimi `config.toml` 等价键 | 转换 |
-| MCP | `config/mcporter.json` | Kimi MCP 配置位置 | 大概率直搬 |
-| amazon-fba 自建记忆 | 格式待 A3-2 | 取决于其格式与 Kimi 记忆能力 | 待定 |
-| loop-engine 座位 | `seat-claude.sh` 调 `claude -p` | Kimi headless CLI 调用方式（`kimi -p`？） | 重写座位适配层 |
+| 项目指令 | 仓内 `CLAUDE.md` / 全局 `~/.claude/CLAUDE.md` | Kimi 读 `AGENTS.md`：全局 `~/.kimi-code/AGENTS.md`、跨工具 `~/.agents/AGENTS.md`、项目级 `.kimi-code/AGENTS.md` 或 `AGENTS.md`（项目根为向上最近的 `.git` 目录） | 转换（文件名/格式不同，内容直搬后作为系统指令） |
+| 项目记忆 | `~/.claude/projects/<映射>/memory/*.md`（Claude 私有 frontmatter：`node_type`/`topic`/`originSessionId`/`audit_allow_numbers`） | **Kimi 无等价持久化记忆机制**。Kimi 仅按会话保存 `wire.jsonl` 于 `~/.kimi-code/sessions/`，无“项目记忆”自动加载；亦无从 `jsonl`/`md` 导入记忆的机制 | 替代/重写：把记忆内容转成 Kimi 可读的 `.kimi-code/AGENTS.md`、Skill 或归档 `.md`，由人审后启用 |
+| 输出风格 | `~/.claude/output-styles/*.md`（如 `ram.md`） | **Kimi 无 output-style 机制**。无 `outputStyle` 配置项，也无同名扫描目录；最接近的是 `AGENTS.md` 系统提示或 Skill | 重写/替代：将 persona 内容内化为全局/项目 `AGENTS.md` 的“人设/输出风格”章节，或做成一个 Skill |
+| skills | `~/.claude/skills/*/SKILL.md`（Claude 接受 `name`/`description`/`metadata`） | Kimi Skill 机制存在：`SKILL.md` 带 YAML frontmatter，扫描目录为用户级 `~/.kimi-code/skills/`、`~/.agents/skills/`；项目级 `.kimi-code/skills/`、`.agents/skills/`；CLI 支持 `--skills-dir`，`config.toml` 支持 `extra_skill_dirs` | 转换：frontmatter 从 Claude schema 改到 Kimi schema（`name`/`description`/`type`/`whenToUse`/`disableModelInvocation`/`arguments`），body 基本直搬 |
+| hooks | `~/.claude/hooks/*.sh` + `settings.json` 中 `hooks.SessionStart[]` | Kimi Hooks 存在，统一在 `~/.kimi-code/config.toml` 的 `[[hooks]]` 数组中配置；支持 `event`/`matcher`/`command`/`timeout`；有 `SessionStart` 事件（matcher `startup`/`resume`，仅观察、不可阻塞） | 转换：把 Claude 的 SessionStart 命令脚本改写到 `[[hooks]]` 条目，脚本路径/输出目标同步改为 Kimi 侧 |
+| settings/权限 | `~/.claude/settings.json` + `settings.local.json` | Kimi 对应 `~/.kimi-code/config.toml`（运行时）+ `tui.toml`（UI）。`permission` 对应 `[[permission.rules]]`（decision/pattern/scope/reason）；`model` 对应 `[providers]`/`[models]`/`default_model`；`env` 对应 provider/service 配置或 shell env；`thinking` 对应 `[thinking].effort` | 转换：逐项映射；Claude 特有字段（`enabledPlugins`、`extraKnownMarketplaces`、`outputStyle`、`statusLine`、`skip*Prompt`）无直接对应，需丢弃或重写 |
+| MCP | 仓内 `config/mcporter.json`、项目根 `.mcp.json` | Kimi MCP 配置：`~/.kimi-code/mcp.json`（用户级）+ 项目级 `.kimi-code/mcp.json`，格式为 `{ "mcpServers": { "<name>": { "command"/"url"/"headers"/... } } }` | 转换/直搬：标准 `mcpServers` 结构基本直搬；Claude 的 `baseUrl` 字段在 Kimi 侧对应 `url`；项目级 `.mcp.json` 需复制到 `.kimi-code/mcp.json` |
+| amazon-fba 自建记忆 | ① `~/.claude/projects/...amazon-fba-workflow/memory/*.md`；② 仓内 `.claude/agents/*.md`、`.claude/commands/*.md`、`.claude/skills/*/SKILL.md`、`.mcp.json` | ① 同“项目记忆”，转 `.kimi-code/AGENTS.md`/Skill/归档；② `commands` 与 `agents` 无直接对应 → 重写为 Skill 或 AGENTS.md 指令；`skills` 转换 frontmatter；`.mcp.json` → `.kimi-code/mcp.json` | 重写/转换 |
+| loop-engine 座位 | `seat-claude.sh` 调用 `claude -p --permission-mode plan` | Kimi headless：`kimi -p "<prompt>"`；需要只读/计划模式时加 `--plan`；需要自动审批时加 `--auto`（`-p` 默认 auto） | 重写 `seat-kimi.sh` 适配层 |
+
+> 关键结论：Kimi 的“项目指令”承载体是 `AGENTS.md`；“记忆”没有自动加载的等价容器，必须人工落地为 `AGENTS.md`/Skill/归档；Hooks、Skills、MCP 都有对应机制但接线位置和配置文件不同；Output-style 没有同名机制。
+
+### B.2 三个 Claude 专属物的 Kimi 承接判定
+
+#### 1) 「拉姆 output-style」
+- 现状：`~/.claude/output-styles/ram.md`（3.8KB，frontmatter `name: 拉姆`，正文为搭档人设与说话风格）。
+- Kimi 侧：**没有 output-style 配置项或扫描目录**。`settings.json` 里的 `"outputStyle": "拉姆"` 在 Kimi 无意义。
+- 承接方式：**重写/替代**。
+  - 推荐落点 1（保证生效）：把 `ram.md` 正文提炼进 **全局 `~/.kimi-code/AGENTS.md`** 的顶部“系统人设”章节；这样每个 Kimi 会话默认加载。
+  - 推荐落点 2（可选）：同时做一个用户级 Skill `~/.kimi-code/skills/ram/SKILL.md`，`type: prompt`、`whenToUse: 当需要以拉姆人格回复时`，供模型自动/手动调用；但自动触发依赖 description 匹配，不如 AGENTS.md 稳定。
+- 注意：迁移时不要把 `ram.md` 原样放进某个 `output-styles/` 目录期待 Kimi 读取——Kimi 不会扫描。
+
+#### 2) amazon-fba 项目级 `.claude/`（agents / commands / skills）
+- 现状（已实勘）：`/Users/melee/Documents/amazon-fba-workflow/.claude/` 下含：
+  - `agents/*.md`：5 个 agent 角色卡（如 `screening-agent.md`）；
+  - `commands/*.md`：24 个 slash command 模板（如 `research-product.md`），使用 `$ARGUMENTS`；
+  - `skills/*/SKILL.md`：6 个 skill（如 `screening`、`discovery`）；
+  - `.mcp.json`：1 个 HTTP MCP server（sorftime）。
+- Kimi 侧：
+  - **没有 `.claude/commands/` 机制**。Kimi 的 slash command 是内置或 Skill 调用；自定义 command 模板应转成 **Skill**，用 `arguments` 接收参数，通过 `/skill:<name>` 调用。
+  - **没有 `.claude/agents/` 机制**。Kimi 内置子 Agent 只有 `coder`/`explore`/`plan`，不接受自定义 agent 类型。agent 角色卡应转成 **Skill**（手动/自动调用）或写入 **项目 `AGENTS.md`** 作为子任务规范。
+  - **Skills 可直接迁移**：`skills/*/SKILL.md` 转换 frontmatter 后放进项目级 `.kimi-code/skills/`（或 `.agents/skills/`）。Claude 的 `name`/`description` 保留；`tools:` 等 Claude 私有字段删除；按需补 `type`、`whenToUse`、`arguments`。
+  - **MCP 迁移**：把 `.mcp.json` 改名为/复制到 `.kimi-code/mcp.json`；HTTP 条目保留 `url`，删除 Claude 侧可能多余的 `type` 字段（Kimi 会忽略，但为清晰可删）。
+- 承接判定：**commands/agents → 重写为 Skill/AGENTS.md 指令；skills → 转换；MCP → 转换/直搬**。
+
+#### 3) SessionStart 不变式钩子（`sync-agent-reach-skill.sh`）
+- 现状：`~/.claude/settings.json` 中 `hooks.SessionStart` 调用 `bash "$HOME/.claude/hooks/sync-agent-reach-skill.sh"`，该脚本从上游 `~/.agents/skills/agent-reach` 取 body，重写标准 frontmatter 后写入 `~/.claude/skills/agent-reach`，保证 Claude 每次启动都有最新版 agent-reach。
+- Kimi 侧：
+  - Kimi Hooks 在 `~/.kimi-code/config.toml` 中配置：`[[hooks]] event = "SessionStart" matcher = "startup" command = "bash ~/.kimi-code/hooks/sync-agent-reach-skill.sh" timeout = 15`。
+  - `SessionStart` 在 Kimi 是**观察事件、不可阻塞**，与 Claude 的 SessionStart 命令语义相同（用于同步），可直接承接。
+  - 需要新建/修改一份 Kimi 版同步脚本 `~/.kimi-code/hooks/sync-agent-reach-skill.sh`：上游仍为 `~/.agents/skills/agent-reach`，目标改为 `~/.kimi-code/skills/agent-reach`（Kimi 专属用户级 skill 目录），frontmatter 按 Kimi schema 规范化（`name`/`description`/`type`/`whenToUse`/`disableModelInvocation`）。
+- 承接判定：**转换**（接线位置从 `settings.json` 改到 `config.toml [[hooks]]`，脚本目标目录改为 `~/.kimi-code/skills/`）。
+
+### B.3 会话历史 `.jsonl` 的处理策略（第 7 项）
+
+> 本轮只【设计策略 + 抽样】，不对全部 78 个 `.jsonl` 做真实过滤。
+
+#### 抽样结果
+- 抽样 1（主 session，amazon-fba，约 45M）：`/Users/melee/.claude/projects/-Users-melee-Documents-amazon-fba-workflow/f91e2557-4044-4280-a0e5-4998a290364f.jsonl`。首行起字段：`type`（`last-prompt`/`mode`/`permission-mode`/`hook_success`/`deferred_tools_delta`/...）、`sessionId`、`parentUuid`、`message`（role/content/tool_use/thinking）、`timestamp`、`cwd` 等。含有大量工具列表/事件 delta/ thinking signature 等“过程垃圾”。
+- 抽样 2（subagent session，restock-v2 worktree）：`/Users/melee/.claude/projects/-Users-melee-Documents-amazon-fba-workflow--claude-worktrees-restock-v2/429a7dab-5324-4e0f-a286-d6c09963ce60/subagents/agent-a18b09b226eaa0f8b.jsonl`。字段类似，但 `isSidechain=true`、`agentId=...`，记录的是子 agent 收到的任务 prompt、思考块、工具调用（如 `Bash(ruff/mypy)`）。
+
+#### 过滤原则
+1. **只读过滤**：由仍有读取权限的 Claude（或本机只读脚本）解析 `.jsonl`，绝不改写源文件。
+2. **保留白名单**（最精简结论）：
+   - `type == "last-prompt"`：保留用户本次会话初始意图。
+   - `type == "user"` 且非 hook/event：保留用户问题/指令。
+   - `type == "assistant"`：只保留 `content` 中 `type == "text"` 的文本；丢弃 `thinking` 块、签名、usage 统计。
+   - `type == "tool_use"` / `type == "tool_result"`：保留工具名和关键输入/输出摘要（长度限制），用于复盘事实依据。
+   - 其余如 `deferred_tools_delta`、`mode`、`permission-mode`、`hook_success`、compact summary、系统 delta 等一律丢弃。
+3. **按主题/项目分桶**：同一 project 下所有 `.jsonl` 过滤后，按 `name`/`topic`/`feedback_*`/`project_*` 等主题聚类（与 memory/*.md 归并规则对齐），不要按 sessionId 平铺。
+4. **人工审定**：过滤产物只生成“归并草案 + MERGE-LOG”，关键结论需人工确认后才写进 `.kimi-code/AGENTS.md` 或 Skill。
+
+#### 落点（Kimi 无 jsonl 导入机制）
+由于 Kimi 没有导入 `.jsonl` 或自动加载项目记忆的机制，过滤后的内容有两个去向：
+
+- **去向 A（高价值、需持续生效）**：提炼为 `.kimi-code/AGENTS.md` 或项目级 `AGENTS.md` 的章节，或做成 `.kimi-code/skills/<topic>/SKILL.md`。例如：
+  - amazon-fba 的 `feedback_estimate_vs_fact` 应作为 AGENTS.md 的硬规则；
+  - 各 `project_*` 记忆可作为 Skill 或 AGENTS.md 引用。
+- **去向 B（低价值/仅备查）**：生成归档 markdown，放在迁移目录 `docs/kimi-migration/02-kimi/<project>/memory-archive/`（不进仓，或仅进 git 做索引），供人查而不自动加载。
+
+> 执行剧本中应新增一步 `25-filter-jsonl.py`（只读源 → 只写迁移目录），输出 `memory-archive/` + `distilled-memory.md` 草案，供人工审定后再进入 `02-kimi/` 的 AGENTS.md/Skill。
 
 ---
 
@@ -214,14 +278,53 @@
 
 ---
 
-## §E 验收标准（"完美承接"客观验证）〔占位 · 待 kimi 回填可执行用例〕
+## §E 验收标准（"完美承接"客观验证）
 
-骨架（待 kimi 把"读到什么文件=通过"填实证）：
-- [ ] 冷启动 agents：Kimi 读到等价项目指令（全局准则+项目记忆），能复现"开一次圆桌冒烟"。
-- [ ] 冷启动 amazon-fba：Kimi 读到归并后的项目记忆 + 自建记忆系统等价承接，复现一个该项目典型任务。
-- [ ] 冷启动 finance：同上。
-- [ ] 记忆无丢失：`02-kimi` 记忆条数 ≥ 归并集条数；抽样内容逐字一致。
-- [ ] skills/hooks：迁移后的 skill 在 Kimi 可触发（或明确标注 Kimi 无对应、已降级替代）。
+以下用例均为“读到什么文件 / 返回什么结果 = 通过”的可执行检查。执行前需确保 Kimi Code CLI 0.20.1+ 已安装、`kimi doctor` 无配置错误。
+
+### E.1 全局/公共底座承接
+
+- [ ] `~/.kimi-code/AGENTS.md` 存在且包含从 `~/.claude/CLAUDE.md` 迁移的全局行为准则（抽查：文件中出现 "Think Before Acting" / "Surgical Changes" / "Goal-Driven Execution" 等关键词）。
+- [ ] `~/.kimi-code/config.toml` 中 `[[hooks]]` 数组包含 SessionStart 同步 hook：`event = "SessionStart"`、`matcher = "startup"`、`command` 指向 `~/.kimi-code/hooks/sync-agent-reach-skill.sh`。
+- [ ] `~/.kimi-code/skills/agent-reach/SKILL.md` 存在，frontmatter 符合 Kimi schema（`name` + `description` + `type` + `whenToUse`）。
+- [ ] `~/.kimi-code/mcp.json` 存在且包含 `exa` server（由 `config/mcporter.json` 迁移）。
+- [ ] `kimi doctor` 输出 `All checked config files are valid.`。
+
+### E.2 项目1 `/Users/melee/Documents/agents`
+
+- [ ] 项目级 `.kimi-code/AGENTS.md`（或仓库根 `AGENTS.md`）存在，包含 loop-engine 关键约束：黑板架构、不私藏上下文、删除/对外/花钱类先问人、不用 claude-code-router。
+- [ ] `~/.kimi-code/skills/loop-engine/SKILL.md` 存在（若选择迁移为 skill），或项目 `AGENTS.md` 中引用了 loop-engine 启动方式。
+- [ ] 冷启动验证：`cd /Users/melee/Documents/agents && kimi --plan -p "用一句话说明本项目的核心约束"` 的输出包含“圆桌/黑板/KB”或“loop-engine”关键词，且不出现“无项目指令”。
+- [ ] `.roundtable/` 已随 `00-raw/repos/agents/` 镜像，迁移目录中 `sessions/` 文件数/体量与源一致（`diff -r` 或 MANIFEST sha256 校验）。
+
+### E.3 项目2 `/Users/melee/Documents/amazon-fba-workflow`
+
+- [ ] 项目级 `.kimi-code/AGENTS.md` 存在，包含从 `CLAUDE.md` L1 迁移的硬规则：SQLite 是单一真相源、TDD、subagent 产出具名 artifact、敏感字段脱敏、Sorftime 调用铁律、“预估≠事实”等。
+- [ ] `.kimi-code/skills/` 下包含从 `.claude/skills/` 迁移的 6 个 skill：`screening`、`discovery`、`compliance`、`draft-listing`、`source-suppliers`、`listing-style-guide`（或合并后的等价集合）。
+- [ ] `.claude/commands/` 的 24 个命令模板已转换为 Skill 或写入项目 `AGENTS.md`；检查方式：`.kimi-code/skills/` 下存在对应 skill，或 `AGENTS.md` 中出现 `research-product`、`compliance-check`、`approve` 等命令名。
+- [ ] `.kimi-code/mcp.json` 存在且包含 `sorftime` server（URL 与源 `.mcp.json` 一致）。
+- [ ] 项目记忆承接：`.kimi-code/AGENTS.md` 或 `.kimi-code/skills/` 中出现 `feedback_estimate_vs_fact`、`project_track_b_sourcing`、`project_track_c_packaging` 等关键记忆主题；或 `docs/kimi-migration/02-kimi/amazon-fba/memory-archive/` 中有对应归档且 MERGE-LOG 无遗漏。
+- [ ] 冷启动验证：`cd /Users/melee/Documents/amazon-fba-workflow && kimi --plan -p "本项目的单一真相源是什么？下一步该做什么？"` 的输出包含“SQLite”和“内盒待回填/供应商核刀版/签约付预付款”等当前状态关键词。
+
+### E.4 项目3 `/Users/melee/Documents/finance`
+
+- [ ] 项目级 `.kimi-code/AGENTS.md` 存在，包含从 `finance/CLAUDE.md` 迁移的指令。
+- [ ] `~/.claude/projects/-Users-melee-Documents-finance/memory/*.md` 的内容已转入 `.kimi-code/AGENTS.md` 或归档，关键 feedback（如 `feedback-trust-ground-truth-over-own-claims`）可被 `grep` 命中。
+- [ ] 冷启动验证：`cd /Users/melee/Documents/finance && kimi --plan -p "本项目的事实核对规则是什么？"` 的输出包含 "trust ground truth" / "verify" / "primary source" 等关键词。
+
+### E.5 skills / hooks 可触发
+
+- [ ] 在 agents 目录冷启动后，输入 `/skill:agent-reach`（或自动触发 research 类问题）能调用到迁移后的 agent-reach skill；TUI 中 skill 列表可见 `agent-reach`。
+- [ ] SessionStart hook 可执行：新建一个 Kimi 会话，`~/.kimi-code/skills/agent-reach/SKILL.md` 的 mtime 不早于会话启动时间（说明 hook 已运行同步）。
+
+### E.6 记忆完整性（量化）
+
+- [ ] `docs/kimi-migration/02-kimi/<project>/` 下归并后的记忆条数 ≥ `01-normalized/memory-merged/<project>/` 下的条数（按文件数或按主题数）。
+- [ ] 抽样 5 条记忆，`.kimi-code/AGENTS.md`/Skill 中的正文与源 `memory/*.md` 经人工比对一致（允许 frontmatter 转换，正文逐字一致）。
+
+### E.7 不迁移项明确标注
+
+- [ ] `MANIFEST.md` 中明确列出“未迁移/无对应”项：Claude `outputStyle`（已降级为 AGENTS.md 人设章节）、`enabledPlugins`、`extraKnownMarketplaces`、`statusLine`、Claude 内置 slash command 等。
 
 ## §F 风险与未知〔占位 · 待 hermes 复审补强；执行席先列已确定项〕
 

@@ -22,6 +22,16 @@ CL_OPTS=(--add-dir "${REPO}")
 CL_MODEL="${LOOP_SEAT_MODEL:-${LOOP_CLAUDE_MODEL:-}}"
 [ -n "${CL_MODEL}" ] && CL_OPTS+=(--model "${CL_MODEL}")
 
+# 跨目录只读盘点：LOOP_ADD_DIRS（空格分隔的绝对路径）仅在【只读模式 plan/review】接入 --add-dir。
+# 红线（实测固化）：acceptEdits（exec 写模式）+ --add-dir 能写到仓外目录 → 故 exec 绝不接入 LOOP_ADD_DIRS，
+# 跨目录一律走 plan 模式（物理只读，写操作被模式拦截），保证座位无法改动 ~/.claude 等仓外文件。
+RO_DIRS=()
+if [ -n "${LOOP_ADD_DIRS:-}" ]; then
+  for _d in ${LOOP_ADD_DIRS}; do
+    [ -e "${_d}" ] && RO_DIRS+=(--add-dir "${_d}")
+  done
+fi
+
 case "${MODE}" in
   plan)
     OUT="${TABLE}/minutes/iter-${ITER}-claude-plan.md"
@@ -39,7 +49,7 @@ ${BRIEF:+补充：${BRIEF}}
 只在该 JSON 块里放计划，agent 字段必须是 claude/codex/hermes 之一。"
     loop_log "Claude 总指挥席入席 iter=${ITER}（plan，只读）"
     set +e
-    ( cd "${REPO}" && claude -p "${INSTR}" "${CL_OPTS[@]}" --permission-mode plan ) >"${OUT}" 2>&1
+    ( cd "${REPO}" && claude -p "${INSTR}" "${CL_OPTS[@]}" ${RO_DIRS[@]+"${RO_DIRS[@]}"} --permission-mode plan ) >"${OUT}" 2>&1
     rc=$?
     set -e
     cat "${OUT}"
@@ -73,7 +83,7 @@ ${BRIEF:+额外关注：${BRIEF}}
 **最后单独成行输出**：无 HIGH/CRITICAL → VERDICT: PASS；否则 → VERDICT: BLOCK"
     loop_log "Claude 验证席入席 iter=${ITER}（review，只读）"
     set +e
-    ( cd "${REPO}" && claude -p "${INSTR}" "${CL_OPTS[@]}" --permission-mode plan ) >"${OUT}" 2>&1
+    ( cd "${REPO}" && claude -p "${INSTR}" "${CL_OPTS[@]}" ${RO_DIRS[@]+"${RO_DIRS[@]}"} --permission-mode plan ) >"${OUT}" 2>&1
     rc=$?
     set -e
     cat "${OUT}"
