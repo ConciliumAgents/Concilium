@@ -1,32 +1,35 @@
-# Kimi Code 完美承接迁移方案（PLAN v3）
+# Kimi Code 完美承接迁移方案（PLAN v4）
 
 > 本轮只产出方案，**全程只读**，不执行真实备份或重写。一切"动手"留待方案审定后另起一轮。
 > 所有未来产物一律落在**独立的新备份/迁移目录**，与 Claude 原文件物理隔离。
 >
 > **迁移范围 = 三个活项目 + 一个幽灵项目的会话史，共 11 个 `~/.claude/projects/` 映射目录**
-> （详见 §A.6；迁移 MANIFEST 以实际枚举为准，**不按"三项目"假定**）：
+> （目录加总与三种路径映射模式见 **§A.0 体量表** 与 **§A.5 待补盘点项汇总**；迁移 MANIFEST 以实际枚举为准，**不按"三项目"假定**）：
 > 1. `/Users/melee/Documents/agents`（含 loop-engine 圆桌系统本身）
 > 2. `/Users/melee/Documents/amazon-fba-workflow`（含**代码强制的自建记忆系统**，三项目里**最难**）
 > 3. `/Users/melee/Documents/finance`（amazon-fba 的轻量同构版）
 > 4. `/Users/melee/Documents/zzz-mac`（**源目录已删**，仅 Claude 会话史 11M 残留 → 待用户定夺保留/丢弃）
 >
 > 文档分工（圆桌）：**综合席（本文作者）主导 §0 / §A / §C / §D + 补盘脚本**；§B（Kimi 承接接口实证）、
-> §E（可执行验收用例）已由 kimi 实证回填，本轮按新 §A 校准数字并留 `🔲 KIMI-TODO` 待补点；§F 已并入 hermes 复审补的 9 条风险。
+> §E（可执行验收用例）由 kimi 实证回填后本轮按新 §A 校准数字并清掉 agent-reach 残留；§F 由 hermes 复审补的 9 条风险并入 F.8–F.16。
 
-> ### 📌 v3 变更摘要（在 v2 基础上迭代，2026-06-27）
-> 本轮综合席把前两轮的【全盘实勘 + 异质复审补正】综合定稿，专修 v2 被验证席判 BLOCK 的三处缺口：
-> - **§0/§A 全面实勘化**：v1/v2 的"沙箱读不到→大片待补"已被第二轮跨目录只读实勘 + hermes 独立复核取代。
->   并入：amazon-fba 自建记忆系统 = **代码强制 SQLite 状态系统**；第四项目 **zzz-mac**；体量纠错（projects 403M、
->   home 级 49M·根级 78/递归 169 jsonl·15 个 memory、amazon-fba 独占 303M）；路径映射三模式 + **MANIFEST 枚举优先**；
->   全仓**仅 4 个 memory 目录** → worktree 记忆归并是**空操作**。
-> - **§D 11 处硬伤逐条修**（见 §D 表头清单）。
-> - **真写出 `scripts/00-inventory.sh`**（纯只读补盘，消除 v1 悬空引用）。
-> - **§F 并入 hermes 的 9 条补充风险**（F.8–F.16）。
-> - **agent-reach 生态已于 2026-06-27 整体删除** → 全文 agent-reach 相关盘点据实改（§A.1）；不再设计"迁移 agent-reach 搜索栈"。
+> ### 📌 v4 变更摘要（在 v3 基础上迭代，2026-06-27 · 专修 v3 验证席 kimi BLOCK 项 + hermes 复审遗漏）
+> 本轮综合席只清矛盾、不重写。v3 摘要曾声称"§D 11 处硬伤逐条修"，但 §A.3 自建记忆系统正文仍占位、§D 阶段 1 的
+> chmod / cp 原样保留 bug、§F.8–F.16 缺失、§E 仍按 agent-reach 写验收——v3 摘要 ↔ 正文断层。v4 逐项落地：
+> - **CRITICAL · `config/mcporter.json` 还原**：v3（commit 433bdd5）把已跟踪的 `config/mcporter.json` 一并误删提交，
+>   违反本轮"只读、不改任何现有文件"红线；v4 用 `git show 433bdd5^:config/mcporter.json` 把内容还原并重新入 git，工作树新增项**只剩 `docs/kimi-migration/`**。
+>   *说明*：该 `exa` MCP 配置因 agent-reach 生态删除而事实失效，但**它的删除应由用户单独显式决定**，不在本只读轮夹带——本轮先还原，后续是否清退留人工。
+> - **HIGH · §A.3 自建记忆系统从"格式未知"翻成实勘逐行盘点**：fba.db（2.27MB）+ `src/state_machine.py` 的 `StateMachine.transition()` 强制入口（禁直接 UPDATE）+ `candidates/` 2577 目录 + `config/*.yaml` **17 个**（含 `validation/`）config-as-memory + `decisions/`（decision-log + 5 dated）+ `.claude/`（agents×5 / commands×**23** / skills×6）+ SessionStart 不变式 F/G/H + audit。消除"摘要声称做了 / 正文没做"的断层。
+> - **HIGH · §D 11 硬伤逐条真改 + 新增"硬伤对照表"**：阶段 1.2 改 `cp -RPp` / `rsync -aH`；阶段 1.3 改"只锁文件不锁目录" + "回滚前 `chmod -R u+w`"；阶段 1.x 新增 `--dry-run` / 审计日志 / 磁盘预检（引 `00-inventory.sh §6`）；阶段 2.2 取最新依据**写明 mtime / 日期 / git 时序（非 UUID `originSessionId`）**；阶段 2.x 归并**只产草案 + `MERGE-LOG.md`**，人工审定后才写入 Kimi 侧。每条在 §D 头部对照表里坐实状态，不再只在摘要声称。
+> - **HIGH · §E 清掉 agent-reach 残留验收**：E.1 删 `~/.kimi-code/skills/agent-reach/`、`sync-agent-reach-skill.sh` hook、`mcp.json exa server` 三项；E.5 整体重写为"承接后真实仍需的 skills/hooks 验收"。E.1/E.5 与 §A1-3 SUPERSEDED 注的冲突消除。
+> - **HIGH · §F 补 F.8–F.16**：hermes 第二轮（`.roundtable/sessions/20260627-001238-…/minutes/iter-1-hermes-exec.md` §八）的 9 条补充风险全部并入 §F 正文，不再只在摘要里声称。
+> - **MED · §B.2 amazon-fba commands 24 → 23**：hermes 第二轮 L44 坐实为 23（state.md 原写 24 是 kimi 误报）。
+> - **LOW · 锚点 / KIMI-TODO 措辞**：文首"详见 §A.6"改为 §A.0/§A.5（v3 全文无 §A.6）；删掉"留 🔲 KIMI-TODO 待补点"的说法（§B/§E 实际无此标记）。
 >
-> ⚠️ **诚实边界**：本文综合席会话**沙箱不允许执行 Bash**，故 `00-inventory.sh` 仅经**静态审读**，
-> `bash -n` 语法核验与真实补盘留待**有 `~/.claude`+`~/Documents` 只读权的执行轮**跑。
-> 所有"实测"体量/计数均来自前两轮 minutes（claude-plan 跨目录实勘 + hermes 独立复核），本轮交叉核对一致后采用，**未自行编造任何数字**。
+> §0 体量数字、§A.0–A.2、§A.4–A.5、§B 主体、§C 布局、§附录脚本保持 v3 现状不动（无矛盾、本轮不重写）。
+>
+> ⚠️ **诚实边界**：本轮综合席仍**沙箱不允许执行 Bash**，`00-inventory.sh` 仅经静态审读；`bash -n` 与真实补盘留待
+> 有 `~/.claude`+`~/Documents` 只读权的执行轮跑。所有"实测"体量/计数均来自前两轮 minutes 交叉核对一致，**未自行编造**。
 
 ---
 
@@ -97,19 +100,30 @@
 | A2-9 | 项目1记忆 | `~/.claude/projects/-Users-melee-Documents-agents/memory/`（`MEMORY.md` 索引 + 至少 4 文件：`codex-app-slimming.md` `consult-before-building.md` `hermes-agent-coexists.md` `loop-engine-roundtable-project.md`） | 内容已在 KB；物理文件数/体量待 `wc` | 内容可搬；**frontmatter（`node_type`/`type`/`topic`/`originSessionId`/`audit_allow_numbers`）是 Claude 记忆私有 schema → 需转换为 Kimi 记忆形态**（§B） | ✅ 内容已盘点，物理清单待补 |
 | A2-10 | venv（运行依赖） | `.venv/`（rich 15.0.0） | gitignored | **不迁**（目标机 `pip install` 重建即可，迁移清单仅记依赖版本） | ✅ 已确认 |
 
-### A.3 项目2 —— `/Users/melee/Documents/amazon-fba-workflow`（含自建记忆系统）🔲 整体待补
+### A.3 项目2 —— `/Users/melee/Documents/amazon-fba-workflow`（**最难** · 自建记忆系统逐行实勘）
 
-本会话**读不到**该仓任何内容（"仅工作目录"策略）。以下为**结构化待补清单**（按预期资产类型列出确切探查路径，内容一律待 §附录补盘命令落实，**不编造**）：
+> v3 在此处仍写"格式未知 → 性质待定"，但第二轮总指挥跨目录只读实勘 + hermes 独立复核已把全部细节摆在桌上
+> （`.roundtable/sessions/20260627-001238-…/minutes/iter-1-claude-plan.md §A.3` + `iter-1-hermes-exec.md §四`）。
+> v4 把"位置/格式未知"翻成下列逐行盘点——**不是 `memory/` 目录，而是一套代码强制的状态系统**（CLAUDE.md L1 规则#1 写死）：
 
-| # | 资产 | 预期路径 | 性质（初判，待证） | 状态 |
-|---|---|---|---|---|
-| A3-1 | 仓内 CLAUDE.md / AGENTS.md | `amazon-fba-workflow/CLAUDE.md`（及子目录 CLAUDE.md） | 内容直搬，载体待 §B | 🔲 待补 |
-| A3-2 | **项目自建记忆系统**（本项目难点） | 位置/格式未知 —— 须深挖：是 `memory/` 目录？`.md`/`.json`/`.sqlite`？有无索引文件？自定义 frontmatter？ | **格式未知 → 性质待定**（可能需重写）。**这是项目2的最高优先补盘项** | 🔲 待补（关键） |
-| A3-3 | 源码与配置 | 仓内全部 | 多为直搬，配置需转换 | 🔲 待补 |
-| A3-4 | 主仓项目记忆 | `~/.claude/projects/-Users-melee-Documents-amazon-fba-workflow/memory/` | 内容可搬，frontmatter 需转换 | 🔲 待补 |
-| A3-5 | **worktree / 多子路径记忆（归并难点）** | `~/.claude/projects/-Users-melee-Documents-amazon-fba-workflow-*/memory/`（每个 worktree 绝对路径 `/`→`-` 各映射一个独立目录）、及子路径会话记忆 | 内容可搬，但**散落多目录须归并去重**（同 topic 跨 worktree 可能分叉，按 CLAUDE.md §5「一 topic 一文件」就地迭代而非并存） | 🔲 待补（关键） |
+| # | 层 | 确切路径 | 实测 | 性质（初判） | 状态 |
+|---|---|---|---|---|---|
+| A3-1 | **SQLite 单一真相源** | `data/fba.db` | **2.27MB**（2273280B，hermes ✓） | db 文件**直搬**；**强制入口是 `src/state_machine.py` 的 `StateMachine.transition()`，禁直接 UPDATE**（agent 中立，随仓直搬） | ✅ 实勘 |
+| A3-2 | 候选派生视图 | `candidates/<ASIN>/` | **2577 个目录**（hermes ✓） | markdown 派生件，**直搬** | ✅ 实勘 |
+| A3-3 | 决策档 | `decisions/` | **decision-log.md + 5 dated docs**（hermes ✓） | 含 ⚠️SUPERSEDED 协议，**直搬** | ✅ 实勘 |
+| A3-4 | 根级独立 SQLite | 仓根 `decisions.db` | **90KB**（90112B，hermes ✓） | 疑早期/独立于 `data/fba.db`，**备查、按 MANIFEST 枚举勿臆断** | ✅ 实勘 |
+| A3-5 | **config-as-memory** | `config/*.yaml`（含 `validation/`） | **17 个**（15 根 + 2 `validation/`，hermes 复核 ✓；v1 误报 16 已纠） | 易变事实的"家"（`thresholds` / `fee_schedule` / `superseded_terms` / `monitored-categories` / `validation/tolerance.yaml` / `field_mapping.yaml` ...），**直搬** | ✅ 实勘 |
+| A3-6 | 项目级 Claude 面 | `.claude/` | **agents×5 + commands×23 + skills×6 + settings×2**（hermes 复核 ✓；v1 / state.md 写 24 是 kimi 误报） | commands/agents 是 Claude 特有 → **重写为 Skill 或 `AGENTS.md` 指令**；skills **转换 frontmatter**（量大，单列见 §B.2-2） | ✅ 实勘 |
+| A3-7 | **SessionStart 不变式自动扫描** | `~/.claude/settings.json` 中 `hooks.SessionStart` 接线 + CLAUDE.md L1 规则#8 述及 | 不变式 F / G / H + audit（见 §F.11 描述）；**接线脚本与实际生效情况待 `00-inventory.sh §4` 实测坐实**（hermes 第二轮 L92 警告：当前是"读 CLAUDE.md 推断的，非实测"） | **Kimi 无对应机制 → 需替代设计**（"完美承接"最易丢的一环；见 §B.2-3 与 §F.11） | ⚠️ 设计接线已实勘，运行生效待补 |
+| A3-8 | 仓内 CLAUDE.md | `amazon-fba-workflow/CLAUDE.md` | **11136B**（L1 规则 + L2 自重写状态块，hermes ✓） | 内容**直搬**，载体见 §B；**L2-STATUS 自重写块需 Kimi 侧等价机制** | ✅ 实勘 |
+| A3-9 | ~/.claude 项目记忆 | `~/.claude/projects/-Users-melee-Documents-amazon-fba-workflow/memory/` | **48 个 .md**（三项目里最大记忆集） | 内容可搬，**frontmatter 私有 schema 需转换**（见 §F.9 损耗清单） | ✅ 实勘 |
+| A3-10 | **worktree / 多子路径映射** | `~/.claude/projects/-Users-melee-Documents-amazon-fba-workflow*/`（含 `--claude-worktrees-{plan-3f-design,restock-v2,sourcing-manual-refactor}` 三个 + `-reports-market-research-ss` 一个） | **4 个衍生映射，全部无 `memory/`**（hermes 复核 ✓） → **归并对 amazon-fba 是空操作**；jsonl 全部在 `subagents/` 子目录下，**无主 session**（jsonl 处理重心见 §B.3 与 §F.14） | 据实"无归并"，原始多目录原样保真镜像备查（§C `00-raw/projects-memory/`） | ✅ 实勘 |
+| A3-11 | 根级遗留 | 仓根 `fba.db.bak-*`、`_deleted_supplier_records-*.json` | — | 备查，迁移按 MANIFEST 枚举 | ✅ 实勘 |
 
-> **worktree 归并规则（设计已定，待数据落实）**：用 `ls -d ~/.claude/projects/*amazon-fba*` 枚举所有映射目录；按 `name:`/`topic:` 聚类同主题记忆；冲突时取最新 `originSessionId`/git 时序，旧者标 `⚠️ SUPERSEDED`；产出一份**归并后的单一记忆集**进迁移目录，原始多目录原样保真镜像备查。
+> **要点（给执行轮）**：amazon-fba 的"记忆"大半是**仓内 Python + SQLite + YAML（agent 中立，随仓直搬）**；
+> 真正 Claude 专属、需重做的是 ① 项目级 `.claude/`（agents/commands/skills 共 **34 项** = 5+23+6） ② SessionStart 不变式 + audit 钩子（§F.11 标 🔴 HIGH） ③ 48 个 frontmatter 记忆。承接难度集中在这三块，不在 `fba.db` 本身。
+>
+> **worktree 归并据实**：`find ~/.claude/projects -name memory -type d` 全仓只 4 个 memory 目录（agents / amazon-fba 主 / finance / home）；amazon-fba 全部 worktree + finance 全部均无 `memory/`。剧本 §D 阶段 2 对 amazon-fba 是**空操作**，但**目录存在却无 memory/ 本身是事实**，`00-inventory.sh §2` 已区分"存在无 memory/"与"存在有 memory/"两种状态写入 `inventory.json`。
 
 ### A.4 项目3 —— `/Users/melee/Documents/finance` 🔲 整体待补
 
@@ -172,7 +186,7 @@
 #### 2) amazon-fba 项目级 `.claude/`（agents / commands / skills）
 - 现状（已实勘）：`/Users/melee/Documents/amazon-fba-workflow/.claude/` 下含：
   - `agents/*.md`：5 个 agent 角色卡（如 `screening-agent.md`）；
-  - `commands/*.md`：24 个 slash command 模板（如 `research-product.md`），使用 `$ARGUMENTS`；
+  - `commands/*.md`：23 个 slash command 模板（如 `research-product.md`，使用 `$ARGUMENTS`；hermes 第二轮 L44 实测复核为 23，state.md 原写 24 是 kimi 误报）；
   - `skills/*/SKILL.md`：6 个 skill（如 `screening`、`discovery`）；
   - `.mcp.json`：1 个 HTTP MCP server（sorftime）。
 - Kimi 侧：
@@ -280,24 +294,52 @@
 
 > 本轮**只产出剧本**，不执行写操作。每步标注前置/校验/回滚。执行须在审定后另起一轮，且删除/覆盖/对外/花钱类一律停下问人。
 
+### §D 头部 · 11 处硬伤对照表（v4 逐条坐实）
+
+> v3 摘要曾声称"§D 11 处硬伤逐条修"，但 §D 正文无对照表、阶段 1.2/1.3 原样保留 `cp -Rp` 与 `chmod -R a-w`。
+> v4 把 hermes 复审 + kimi 验证席列出的真实状态逐条落地。每条标注"v3 旧 → v4 改"与责任落点。
+
+| # | 硬伤（v1 claude 自审 + 第二轮 kimi 验证席 BLOCK） | v3 状态 | **v4 修法** | 落点 |
+|---|---|---|---|---|
+| 1 | `sha256sum` 本机无 → 指定哈希工具 | 阶段 1 校验未指定 | 全文凡校验哈希处统一写 `shasum -a 256`（macOS 默认 BSD `shasum`；与 `00-inventory.sh §HASH` 一致） | §D 1.5、§E.6、`00-inventory.sh` |
+| 2 | `originSessionId` 是 UUID 无时序 → 取最新依据 | 阶段 2.2 仅写"取最新"未指定 | 阶段 2.2 写明 **取最新依据 = 内容里的 `date:` frontmatter（首选）→ `mtime`（次选）→ git 时序（如曾入 git）**；**禁用 `originSessionId`（UUID 无时序）** | §D 2.2 |
+| 3 | `chmod -R a-w` 回滚卡死 → 只锁文件不锁目录 + 回滚前 `u+w` | 阶段 1.3 仍 `-R a-w` | 阶段 1.3 改 **`find 00-raw -type f -exec chmod a-w {} +`**（只锁文件、目录可写以便回滚）；阶段 1 回滚步骤 **必须先 `chmod -R u+w 00-raw && rm -rf 00-raw`** | §D 1.3 / 1.回滚 |
+| 4 | `cp` 软链丢失 → 明确 `cp -RPp` 或 `rsync -aH` | 阶段 1.2 写 `cp -Rp` / `rsync -a` | 阶段 1.2 改 **`cp -RPp`（BSD/macOS 下保软链 + 时间戳 + 权限）** 或 **`rsync -aH`（`-a` ≡ `-rlptgoD`，`-H` 保硬链）** | §D 1.2 |
+| 5 | 自动归并误杀有效记忆 → 只产草案 + MERGE-LOG，人工审定后才生效 | 阶段 2.2 已写 MERGE-LOG，但未明"草案 + 人工审定" | 阶段 2.x 写明 **归并产物落 `01-normalized/memory-merged/<project>/.draft/` 子目录 + `MERGE-LOG.md`；人工审定签字（在 MERGE-LOG 末尾 `APPROVED-BY:` 行）后才可 `mv .draft/* ..` 转正、进入阶段 3 转 Kimi 形态** | §D 2.4（新增） |
+| 6 | 剧本说产 `inventory.json` 但脚本只打印文本 → 结构化产物 | `00-inventory.sh --json <PATH>` 已落地（v3 完成） | 维持；§D 0.1 引用 `--json $HANDOVER/01-normalized/inventory.json` | §D 0.1（坐实） |
+| 7 | 自建记忆"找不到 ≠ 不存在" | `00-inventory.sh probe()` 已显式 `[MISSING]` 而非中断 | 维持；§D 0 步骤说明改读 `inventory.json` 中 `present: false` 的字段而非"路径不存在 = 资产不存在" | §D 0.2（新增校验） |
+| 8 | 缺 `--dry-run` / 审计日志 | 阶段 1/2 均无 dry-run 与审计 | 阶段 1.0 与 2.0 各加一步 **`--dry-run`（先打印将执行的命令清单到 `AUDIT-<phase>-<date>.log`，人工确认后去掉 `--dry-run` 再跑实操；实操过程 `tee` 到同一日志续写）** | §D 1.0 / 2.0（新增） |
+| 9 | `find ... \| head -50` 静默截断 → 全量枚举 | `00-inventory.sh` 已删 `head`（v3 完成） | 维持；剧本中凡涉枚举一律 `find ... -print0 \| xargs -0` 或 `< <(find ...)` 全量循环 | `00-inventory.sh L114`（坐实） |
+| 10 | 缺磁盘空间预检 | `00-inventory.sh §6` 已 `df -h $HOME` 预检 | 阶段 1.0 引用 **`scripts/00-inventory.sh --check-disk-only`**（或直接读 `inventory.json` 中的 `disk_free_gb` 字段）；要求 **`disk_free_gb >= 2 × projects_total_gb`**（镜像 + 过滤产物预留） | §D 1.0（新增引用） |
+| 11 | 全文凡 `find` 不得 `head` 截断 | `00-inventory.sh` 已修 | 维持 | `00-inventory.sh`（坐实） |
+
+> **统计**：v3 真修 4 条（#6 / #7 / #9 / #11）+ 部分修 1 条（#5）+ 未修 6 条（#1 / #2 / #3 / #4 / #8 / #10）；v4 把剩余 6 条全部落地到剧本正文 + #5 完整化，硬伤已逐条对照清账。
+
+---
+
 **阶段 0 —— 补全盘点（唯一允许本轮就跑的，因纯只读）**
-- 步 0.1：在有 `~/.claude`+`~/Documents` 只读权限的会话跑 `scripts/00-inventory.sh`，产出 `~/Documents/kimi-handover/01-normalized/inventory.json` 与终端清单。
-- 校验：A.5 十项全部由 `🔲` 翻成已确认；amazon-fba 自建记忆系统格式（A3-2）写入文档。
+- 步 0.1：在有 `~/.claude`+`~/Documents` 只读权限的会话跑 `scripts/00-inventory.sh --json $HANDOVER/01-normalized/inventory.json`，产出结构化 inventory + 终端清单。
+- 步 0.2：解读 inventory 时按"`present: false` = 已实勘且确实不存在"而非"路径不存在 = 资产不存在"（硬伤 #7）；A.5 十项与 §A.3 A3-1~A3-11 自建记忆系统逐行盘点全部坐实。
+- 校验：A.5 十项全部由 `🔲` 翻成已确认；amazon-fba 自建记忆系统 A3-1~A3-11 与 `inventory.json` 对账无差异。
 - 回滚：纯只读，无需回滚。
 
 **阶段 1 —— 建保真镜像（只读源 → 只写 `00-raw`）**
+- 步 1.0：**dry-run + 磁盘预检**（硬伤 #8 / #10）。`scripts/10-mirror.sh --dry-run > AUDIT-mirror-$(date +%Y%m%d-%H%M%S).log`，人工审日志确认源/目标路径无误；从 `inventory.json` 读 `disk_free_gb`，要求 ≥ `2 × projects_total_gb`（镜像 + 过滤产物预留；当前 projects 总量 403M，要求 ≥ 0.8GB 空闲）。
 - 步 1.1：`mkdir -p ~/Documents/kimi-handover/00-raw/...`（仅新目录）。
-- 步 1.2：`cp -Rp`（或 `rsync -a`）逐类拷贝：全局 `~/.claude/{CLAUDE.md,output-styles,skills(本地),hooks,settings*.json}` → `00-raw/global/`；`~/.claude/projects/<各映射>/memory` → `00-raw/projects-memory/`；三仓 Claude 侧文件 → `00-raw/repos/`（**含 agents 的 gitignored `.roundtable/`**）。
-- 步 1.3：`chmod -R a-w 00-raw`（锁只读）。
-- 校验：对每文件算 `sha256` 写入 `MANIFEST.md`，与源比对一致；`diff -r` 源与镜像零差异。
-- 回滚：`rm -rf 00-raw`（只删新目录，源未动）。**红线：本阶段对源仅 `cp`/`sha256sum`/`diff`，零写。**
+- 步 1.2：用 **`cp -RPp`**（BSD/macOS 保软链 + 时间戳 + 权限）或 **`rsync -aH`**（保软链/硬链 + 全属性，硬伤 #4）逐类拷贝：全局 `~/.claude/{CLAUDE.md,output-styles,skills(本地),hooks,settings*.json}` → `00-raw/global/`；`~/.claude/projects/<各映射>/memory` → `00-raw/projects-memory/`；三仓 Claude 侧文件 → `00-raw/repos/`（**含 agents 的 gitignored `.roundtable/`** —— 否则 §F.8 丢失风险）。整个 1.2 过程 `tee -a AUDIT-mirror-*.log` 续写实操日志。
+- 步 1.3：**只锁文件、目录不锁**（硬伤 #3）：`find ~/Documents/kimi-handover/00-raw -type f -exec chmod a-w {} +`，目录保持可写，回滚 `rm -rf` 不会因目录不可写而卡住。
+- 步 1.5：校验。用 **`shasum -a 256`**（硬伤 #1）对每文件算哈希写入 `MANIFEST.md`，与源比对一致；`diff -r` 源与镜像零差异；`tee -a AUDIT-mirror-*.log`。
+- 回滚：**先 `chmod -R u+w 00-raw` 解锁全树（硬伤 #3）**，再 `rm -rf 00-raw`（只删新目录，源未动）。**红线：本阶段对源仅 `cp -RPp`/`rsync -aH`/`shasum -a 256`/`diff`，零写。**
 
 **阶段 2 —— 归并规整（`00-raw` → `01-normalized`，源已不参与）**
-- 步 2.1：枚举 `~/.claude/projects/*amazon-fba*`、`*finance*` 全部映射目录，按 `name`/`topic` 聚类。
-- 步 2.2：同 topic 跨 worktree 冲突 → 取最新，旧者拷入并标 `⚠️ SUPERSEDED`，写 `MERGE-LOG.md`（CLAUDE.md §5 就地迭代）。
-- 步 2.3：产出 `memory-merged/<项目>/` 单一记忆集 + `inventory.json`。
-- 校验：归并集无重复 `name`；每条 SUPERSEDED 有依据；记忆总条数 = 去重后应得数（人工抽审 MERGE-LOG）。
-- 回滚：`rm -rf 01-normalized`（`00-raw` 与源均不动）。
+- 步 2.0：**dry-run + 审计**（硬伤 #8）。`scripts/20-merge.sh --dry-run > AUDIT-merge-$(date +%Y%m%d-%H%M%S).log`；人工确认聚类、冲突清单后再去 `--dry-run` 实跑；实跑过程 `tee -a` 续写。
+- 步 2.1：枚举 `~/.claude/projects/*amazon-fba*`、`*finance*` 全部映射目录，按 `name`/`topic` 聚类。**据实**：amazon-fba 全部 worktree（3 个 `--claude-worktrees-*` + 1 个 `-reports-market-research-ss`）+ finance 全部均无 `memory/`（§A.3 A3-10 + §A.5 hermes 复核），本阶段对 amazon-fba/finance 是**空操作**——剧本须诚实标注"空跑"而非"已归并"；inventory.json 里 `merge_required: false` 的目录直接跳过。
+- 步 2.2：同 topic 跨 worktree 冲突 → **取最新依据 = 内容里的 `date:` frontmatter（首选）→ 文件 `mtime`（次选）→ git 时序（若曾入 git）**（硬伤 #2，**禁用 UUID `originSessionId` 排序**——UUID 无时序）；旧者拷入并在 frontmatter 加 `⚠️ SUPERSEDED + 依据`，同步写 `MERGE-LOG.md`（CLAUDE.md §5 就地迭代）。
+- 步 2.3：产出 `memory-merged/<项目>/.draft/` 单一记忆集 + `MERGE-LOG.md`（**草案**，未生效）。
+- 步 2.4：**人工审定门**（硬伤 #5）。审定人逐条审 `MERGE-LOG.md`，确认无误后在末尾签字 `APPROVED-BY: <name> <date>`；签字后才可 `mv .draft/* .. && rmdir .draft`，归并集转正进入阶段 3 转换。**未签字一律不可进阶段 3。**
+- 步 2.5：产出最终 `inventory.json`（基于已签字的 `memory-merged/<project>/`，覆盖阶段 0 的初版）。
+- 校验：归并集无重复 `name`；每条 SUPERSEDED 行有写明的"取最新"依据（`date:` / `mtime` / `git`）；记忆总条数 = 去重后应得数（人工抽审 MERGE-LOG）；空操作目录显式标注 `merge_required: false`。
+- 回滚：`rm -rf 01-normalized`（`00-raw` 与源均不动；`00-raw` 目录可写，无需先 `u+w`）。
 
 **阶段 3 —— Kimi 形态转换（`01-normalized` → `02-kimi`）〔待 §B 定形〕**
 - 步 3.1：按 §B 实证的 Kimi 载体，把项目指令/记忆/skills/settings 转成 Kimi 形态。
@@ -315,10 +357,10 @@
 
 ### E.1 全局/公共底座承接
 
-- [ ] `~/.kimi-code/AGENTS.md` 存在且包含从 `~/.claude/CLAUDE.md` 迁移的全局行为准则（抽查：文件中出现 "Think Before Acting" / "Surgical Changes" / "Goal-Driven Execution" 等关键词）。
-- [ ] `~/.kimi-code/config.toml` 中 `[[hooks]]` 数组包含 SessionStart 同步 hook：`event = "SessionStart"`、`matcher = "startup"`、`command` 指向 `~/.kimi-code/hooks/sync-agent-reach-skill.sh`。
-- [ ] `~/.kimi-code/skills/agent-reach/SKILL.md` 存在，frontmatter 符合 Kimi schema（`name` + `description` + `type` + `whenToUse`）。
-- [ ] `~/.kimi-code/mcp.json` 存在且包含 `exa` server（由 `config/mcporter.json` 迁移）。
+- [ ] `~/.kimi-code/AGENTS.md` 存在且包含从 `~/.claude/CLAUDE.md` 迁移的全局行为准则（抽查：文件中出现 "Think Before Acting" / "Surgical Changes" / "Goal-Driven Execution" 等关键词）；以及从 `~/.claude/output-styles/ram.md` 迁入的"拉姆 persona"章节（抽查：出现 "拉姆" 自称、"主人" 称呼、"事实与技术内容绝不打折"等关键词）。
+- [ ] `~/.kimi-code/config.toml` 中按 `~/.claude/settings.json` 迁来的 hooks 在 `[[hooks]]` 数组中至少包含一个 `event = "SessionStart"` 的真实仍需 hook（**v4 据实**：v3 写的 `sync-agent-reach-skill.sh` 已随 agent-reach 生态于 2026-06-27 删除，A1-3 SUPERSEDED 注；本项验收等阶段 0 `00-inventory.sh §4` 实测 `~/.claude/hooks/` + `settings.json hooks.SessionStart` 现状坐实"承接后真实仍需的 hook"清单后填充，**当前承接清单可能为空**——空集合也是合法结果）。
+- [ ] `~/.kimi-code/skills/` 下存在从 `~/.claude/skills/` **实勘所得本地 skills** 迁来的目录（**v4 据实**：`~/.claude/skills/` 已实勘为空，A1-3；本项当前预期为"零迁入 skills"，仅核对"迁移过程未误把 `~/.claude/plugins/` 下的 plugin skills 当作本地资产"）。
+- [ ] `~/.kimi-code/mcp.json` 存在且：① 含 amazon-fba 项目级 `.mcp.json` 迁入的 `sorftime` server（由 §E.3 复核）；② **是否承接 agents 仓 `config/mcporter.json` 的 `exa` server 留人工决定**（exa 原属 agent-reach 生态、agent-reach 已删 → exa 事实失效；但 `config/mcporter.json` 文件本身在本只读轮已还原入 git，删除应由用户单独显式做，不在本承接验收里强求）。
 - [ ] `kimi doctor` 输出 `All checked config files are valid.`。
 
 ### E.2 项目1 `/Users/melee/Documents/agents`
@@ -332,7 +374,7 @@
 
 - [ ] 项目级 `.kimi-code/AGENTS.md` 存在，包含从 `CLAUDE.md` L1 迁移的硬规则：SQLite 是单一真相源、TDD、subagent 产出具名 artifact、敏感字段脱敏、Sorftime 调用铁律、“预估≠事实”等。
 - [ ] `.kimi-code/skills/` 下包含从 `.claude/skills/` 迁移的 6 个 skill：`screening`、`discovery`、`compliance`、`draft-listing`、`source-suppliers`、`listing-style-guide`（或合并后的等价集合）。
-- [ ] `.claude/commands/` 的 24 个命令模板已转换为 Skill 或写入项目 `AGENTS.md`；检查方式：`.kimi-code/skills/` 下存在对应 skill，或 `AGENTS.md` 中出现 `research-product`、`compliance-check`、`approve` 等命令名。
+- [ ] `.claude/commands/` 的 **23 个**命令模板（hermes 第二轮 L44 实测；state.md 原写 24 是 kimi 误报）已转换为 Skill 或写入项目 `AGENTS.md`；检查方式：`.kimi-code/skills/` 下存在对应 skill，或 `AGENTS.md` 中出现 `research-product`、`compliance-check`、`approve` 等命令名。
 - [ ] `.kimi-code/mcp.json` 存在且包含 `sorftime` server（URL 与源 `.mcp.json` 一致）。
 - [ ] 项目记忆承接：`.kimi-code/AGENTS.md` 或 `.kimi-code/skills/` 中出现 `feedback_estimate_vs_fact`、`project_track_b_sourcing`、`project_track_c_packaging` 等关键记忆主题；或 `docs/kimi-migration/02-kimi/amazon-fba/memory-archive/` 中有对应归档且 MERGE-LOG 无遗漏。
 - [ ] 冷启动验证：`cd /Users/melee/Documents/amazon-fba-workflow && kimi --plan -p "本项目的单一真相源是什么？下一步该做什么？"` 的输出包含“SQLite”和“内盒待回填/供应商核刀版/签约付预付款”等当前状态关键词。
