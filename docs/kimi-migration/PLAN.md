@@ -1,14 +1,32 @@
-# Kimi Code 完美承接迁移方案（PLAN）
+# Kimi Code 完美承接迁移方案（PLAN v3）
 
 > 本轮只产出方案，**全程只读**，不执行真实备份或重写。一切"动手"留待方案审定后另起一轮。
 > 所有未来产物一律落在**独立的新备份/迁移目录**，与 Claude 原文件物理隔离。
 >
-> 三项目范围：
+> **迁移范围 = 三个活项目 + 一个幽灵项目的会话史，共 11 个 `~/.claude/projects/` 映射目录**
+> （详见 §A.6；迁移 MANIFEST 以实际枚举为准，**不按"三项目"假定**）：
 > 1. `/Users/melee/Documents/agents`（含 loop-engine 圆桌系统本身）
-> 2. `/Users/melee/Documents/amazon-fba-workflow`（含项目自建记忆系统）
-> 3. `/Users/melee/Documents/finance`
+> 2. `/Users/melee/Documents/amazon-fba-workflow`（含**代码强制的自建记忆系统**，三项目里**最难**）
+> 3. `/Users/melee/Documents/finance`（amazon-fba 的轻量同构版）
+> 4. `/Users/melee/Documents/zzz-mac`（**源目录已删**，仅 Claude 会话史 11M 残留 → 待用户定夺保留/丢弃）
 >
-> 文档分工（圆桌）：**执行席（本文作者）主导 A / C / D**；B / E / F 留占位待 **kimi（承接接口实证）** 与 **hermes（结构映射严谨性复审）** 回填后由总指挥综合。
+> 文档分工（圆桌）：**综合席（本文作者）主导 §0 / §A / §C / §D + 补盘脚本**；§B（Kimi 承接接口实证）、
+> §E（可执行验收用例）已由 kimi 实证回填，本轮按新 §A 校准数字并留 `🔲 KIMI-TODO` 待补点；§F 已并入 hermes 复审补的 9 条风险。
+
+> ### 📌 v3 变更摘要（在 v2 基础上迭代，2026-06-27）
+> 本轮综合席把前两轮的【全盘实勘 + 异质复审补正】综合定稿，专修 v2 被验证席判 BLOCK 的三处缺口：
+> - **§0/§A 全面实勘化**：v1/v2 的"沙箱读不到→大片待补"已被第二轮跨目录只读实勘 + hermes 独立复核取代。
+>   并入：amazon-fba 自建记忆系统 = **代码强制 SQLite 状态系统**；第四项目 **zzz-mac**；体量纠错（projects 403M、
+>   home 级 49M·根级 78/递归 169 jsonl·15 个 memory、amazon-fba 独占 303M）；路径映射三模式 + **MANIFEST 枚举优先**；
+>   全仓**仅 4 个 memory 目录** → worktree 记忆归并是**空操作**。
+> - **§D 11 处硬伤逐条修**（见 §D 表头清单）。
+> - **真写出 `scripts/00-inventory.sh`**（纯只读补盘，消除 v1 悬空引用）。
+> - **§F 并入 hermes 的 9 条补充风险**（F.8–F.16）。
+> - **agent-reach 生态已于 2026-06-27 整体删除** → 全文 agent-reach 相关盘点据实改（§A.1）；不再设计"迁移 agent-reach 搜索栈"。
+>
+> ⚠️ **诚实边界**：本文综合席会话**沙箱不允许执行 Bash**，故 `00-inventory.sh` 仅经**静态审读**，
+> `bash -n` 语法核验与真实补盘留待**有 `~/.claude`+`~/Documents` 只读权的执行轮**跑。
+> 所有"实测"体量/计数均来自前两轮 minutes（claude-plan 跨目录实勘 + hermes 独立复核），本轮交叉核对一致后采用，**未自行编造任何数字**。
 
 ---
 
@@ -35,21 +53,34 @@
 
 ---
 
-## §A 资产全盘点
+## §A 资产全盘点（第二轮跨目录只读实勘 · hermes 独立复核坐实）
 
-### A.1 全局共享层 `~/.claude/`（被三项目共用，迁移的"公共底座"）
+### A.0 体量纠错与全局坐标（实测，替换 v1 的估算）
 
-| # | 资产 | 确切路径 | 体量 | 性质（初判） | 状态 |
+| 区域 | v1/一轮说法 | **实测（第二轮，hermes 复核 ✓）** |
+|---|---|---|
+| `~/.claude/projects` 总量 | 402M | **403M**（11 个映射目录加总吻合） |
+| home 级 `-Users-melee`（会话史） | 40+GB（hermes 一轮错报）→ 49M | **49M；根级 78 个 .jsonl，含 `subagents/`+`subagents/workflows/` 嵌套后共 169 个；`memory/` 15 个 .md（14 内容 + MEMORY.md）** |
+| **amazon-fba 映射（一轮没料到的大头）** | — | **独占 303M（≈ 总量 3/4）；根级 79 jsonl，递归含 subagent 共 795 个** → jsonl 处理重心在此，不在 home 级 |
+| finance 映射 | — | 17M |
+| agents 映射 | — | 14M |
+| **zzz-mac 映射（hermes 纠出的漏盘）** | — | **11M，5 jsonl，源目录已删**（详见 §A.5） |
+
+### A.1 全局共享层 `~/.claude/`（三项目公共底座 · 实测）
+
+| # | 资产 | 确切路径 | 实测体量 | 性质（初判） | 状态 |
 |---|---|---|---|---|---|
-| A1-1 | 全局行为准则 CLAUDE.md | `~/.claude/CLAUDE.md` | 约 100 行（context 全文估；精确 `wc` 待补）。含 6 大节：业务适配层 / Think Before Acting / Simplicity First / Surgical Changes / Goal-Driven Execution / Knowledge Supersession / 别把幻觉当事实 | 内容直搬，**载体待 §B 定**（Claude 读 CLAUDE.md → Kimi 读什么） | ✅ 已盘点 |
-| A1-2 | 输出风格「拉姆」 | `~/.claude/output-styles/<拉姆>.md`（确切文件名待补） | 全文在 context（约 80 行人设协议） | **需重写/无对应需替代**（output-styles 是 Claude 特有机制，Kimi 多半无等价；可降级为"系统提示/persona 文件"） | ⚠️ 确认存在，目录全清单待补 |
-| A1-3 | output-styles 目录其余风格 | `~/.claude/output-styles/` | 待补 | 同 A1-2 | 🔲 待补盘点 |
-| A1-4 | skills 目录 | `~/.claude/skills/` | 待补（含至少 `agent-reach/`，由记忆确认） | 取决于 Kimi 是否支持 skills（`--skills-dir`？）→ **待 §B**；脚本类直搬、frontmatter 可能需转换 | 🔲 待补盘点 |
-| A1-5 | hooks 目录 | `~/.claude/hooks/` | 待补（含至少 `sync-agent-reach-skill.sh`，由记忆确认） | **需转换/需重写**（Claude hooks 由 settings.json 接线；Kimi hook 机制不同） | 🔲 待补盘点 |
-| A1-6 | 全局 settings | `~/.claude/settings.json` + `~/.claude/settings.local.json` | 待补 | **需转换**（权限/env/hooks 接线 → Kimi `config.toml` 等价项） | 🔲 待补盘点 |
-| A1-7 | home 级记忆 | `~/.claude/projects/-Users-melee/memory/`（推定路径） | 待补 | 内容可搬，frontmatter 私有字段需转换 | 🔲 待补盘点 |
+| A1-1 | 全局行为准则 CLAUDE.md | `~/.claude/CLAUDE.md` | **6088B / 126 行**。含 6 大节：业务适配层 / Think Before Acting / Simplicity First / Surgical Changes / Goal-Driven Execution / Knowledge Supersession / 别把幻觉当事实 | 内容直搬，载体见 §B（→ Kimi `AGENTS.md`） | ✅ 实勘 |
+| A1-2 | 输出风格「拉姆」 | `~/.claude/output-styles/ram.md` | **3811B**（另有 `ram.md.bak-2026-06-25` 1321B 备份） | **替代/重写**（output-styles 是 Claude 特有机制，Kimi 无等价；降级为 `AGENTS.md` 人设章节，见 §B.2-1） | ✅ 实勘 |
+| A1-3 | 本地 skills | `~/.claude/skills/` | **现已实勘为空** | — | ✅ 实勘（见下方 SUPERSEDED 注） |
+| A1-4 | 本地 hooks | `~/.claude/hooks/` | 第二轮实勘仅 `sync-agent-reach-skill.sh`（1882B）；**该 hook 随 agent-reach 生态删除** | 由 settings.json 接线 → 见 §A.7 执行轮复核 | ⚠️ 删后现状待 `00-inventory.sh` 复核 |
+| A1-5 | 全局 settings | `~/.claude/settings.json`（85 行）+ `settings.local.json`（155 行） | **2335B + 9292B** | 需转换为 Kimi `config.toml` 等价键（见 §B） | ✅ 实勘 |
+| A1-6 | home 级记忆 | `~/.claude/projects/-Users-melee/memory/` | **15 个 .md**（14 内容 + MEMORY.md） | 内容可搬；frontmatter 私有 schema 需转换 | ✅ 实勘 |
+| A1-7 | plugins（**非本地资产**） | `~/.claude/plugins/` | **46M** | **不迁**；满屏 `superpowers:*`/`agent-skills:*`/`document-skills:*`/`codex:*` 命名空间 skill 全部来自此处，MANIFEST 仅登记来源 | ✅ 实勘 |
 
-> ⚠️ 注意区分：本会话 system-reminder 列出的大批 skill 名（`superpowers:*` `agent-skills:*` `document-skills:*` `codex:*` 等命名空间者）多为 **plugin 提供**，未必是 `~/.claude/skills/` 下的本地文件；无命名空间者（`agent-reach` `update-config` `verify` `code-review` `loop` `schedule` `init` `review` `security-review` 等）更可能是本地/内置。**本地 skills 的真实清单与 plugin 来源必须由 §附录补盘命令落实**，不在本轮凭名单反推（避免把 plugin 当本地资产误迁）。
+> ⚠️ **SUPERSEDED（2026-06-27）**：v1/v2 把 `agent-reach` 当作 `~/.claude/skills/` 下唯一本地 skill、并设计"迁移 agent-reach 搜索栈"——**此前提已作废**。`agent-reach` 连同整个生态（pipx 本体 + Claude/hermes/upstream 三份 skill 副本 + SessionStart sync hook + mcporter + 上游 CLI）已于 2026-06-27 彻底删除（`imported-memory.md` 的 `hermes-agent-coexists` 已记此事，取证归档 `~/Documents/agent-reach-forensics-20260627/`）。**因此：① `~/.claude/skills/` 现为空，A1-3 据实改；② 方案不再设计 agent-reach 承接；③ §B.2-3 的 SessionStart 钩子以 sync-agent-reach 为例，仅作 hook 迁移机制示范，其同步目标已不存在，承接时应换成实际仍需的 hook（若有）。** 网络搜索改用内置 WebSearch/WebFetch。
+>
+> ⚠️ 区分本地 vs plugin skill：system-reminder 满屏命名空间 skill 来自 `~/.claude/plugins/`（46M），**非本地资产、不迁**；本地 `~/.claude/skills/` 实勘为空。迁移脚本须能区分二者（`00-inventory.sh` 已对二者分别计数）。
 
 ### A.2 项目1 —— `/Users/melee/Documents/agents`（含 loop-engine 本身）✅ 已实测
 
