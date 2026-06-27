@@ -68,7 +68,15 @@ case "${MODE}" in
     INSTR="${PRE}
 
 你的角色：**执行席**（工具/环境活）。请完成下述任务：
-${BRIEF}"
+${BRIEF}
+
+**完成后请在纪要末尾另起一节，写入：**
+## 教训
+### 通用
+- （本次值得归档的通用协作/流程教训，一条一行；无则写\"（无）\"）
+### <项目名>
+- （本次项目专属教训；无则写\"（无）\"）
+"
     loop_log "hermes 执行席入席 iter=${ITER}，hermes -z --yolo"
     set +e
     ( cd "${REPO}" && hermes ${EXTRA[@]+"${EXTRA[@]}"} -z "${INSTR}" --yolo ) >"${OUT}" 2>&1

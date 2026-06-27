@@ -4,3 +4,5 @@ __pycache__/
 *.pyc
 *.png
 .playwright-mcp/
+# ↓ roundtable-memory/ 是 git 版本化的圆桌持久记忆（索引/教训库/成果），
+#   先确认你想 gitignore 的是什么再说，别手滑加这一行。注释值 spec §9.2-R6。
