@@ -11,7 +11,7 @@
 依赖：仅 Python 标准库。
 """
 from __future__ import annotations
-import argparse, datetime, json, os, re, signal, subprocess, sys
+import argparse, datetime, hashlib, json, os, re, signal, subprocess, sys
 from pathlib import Path
 
 BIN = Path(__file__).resolve().parent
@@ -170,16 +170,23 @@ def _claude_project_memory(repo: str) -> Path:
 
 def import_memory(repo: str) -> int:
     """记忆桥（进）：把仓库外的项目记忆汇集进本会话 KB/imported-memory.md，
-    让 codex/hermes 这些读不到 Claude 私库的座位也看到完整项目。只读拉取。"""
+    让 codex/hermes 这些读不到 Claude 私库的座位也看到完整项目。只读拉取。
+    各源各自 try/except 加固：单文件读失败只跳过该源，不拖垮整桥（正常路径行为不变）。"""
     parts = ["# 导入的项目记忆（memory-bridge 汇集 · 所有座位自取）", ""]
     n = 0
     cm = Path(repo) / "CLAUDE.md"
     if cm.exists():
-        parts += ["## 仓库 CLAUDE.md", cm.read_text(encoding="utf-8", errors="replace")[:4000], ""]; n += 1
+        try:
+            parts += ["## 仓库 CLAUDE.md", cm.read_text(encoding="utf-8", errors="replace")[:4000], ""]; n += 1
+        except OSError:
+            pass
     md = _claude_project_memory(repo)
     if md.is_dir():
         for f in sorted(md.glob("*.md")):
-            parts += [f"## Claude 项目记忆 · {f.name}", f.read_text(encoding="utf-8", errors="replace")[:3000], ""]; n += 1
+            try:
+                parts += [f"## Claude 项目记忆 · {f.name}", f.read_text(encoding="utf-8", errors="replace")[:3000], ""]; n += 1
+            except OSError:
+                pass
     cur = os.environ.get("LOOP_SESSION", "")
     sroot = Path(repo) / ".roundtable" / "sessions"
     if sroot.is_dir():
@@ -188,12 +195,95 @@ def import_memory(repo: str) -> int:
                 continue
             c = sd / "KB" / "conclusion.md"
             if c.exists():
-                parts += [f"## 过往会话结论 · {sd.name}", c.read_text(encoding="utf-8", errors="replace")[:1500], ""]; n += 1
+                try:
+                    parts += [f"## 过往会话结论 · {sd.name}", c.read_text(encoding="utf-8", errors="replace")[:1500], ""]; n += 1
+                except OSError:
+                    pass
+    # 新源：git 化的中立持久记忆 roundtable-memory/。默认关（LOOP_USE_ROUNDTABLE_MEMORY=0）；
+    # 关时此块不执行 → 输出与改造前逐字一致（零回归死线）。开时追加在末尾，不动既有字节。
+    if os.environ.get("LOOP_USE_ROUNDTABLE_MEMORY", "0") == "1":
+        try:
+            project = os.environ.get("LOOP_ARCHIVE_PROJECT") or Path(repo).name
+            rt_parts, rt_n = _roundtable_memory(repo, project)
+            parts += rt_parts; n += rt_n
+        except Exception:
+            pass
     try:
-        (session_dir(repo) / "KB" / "imported-memory.md").write_text("\n".join(parts), encoding="utf-8")
+        out_path = session_dir(repo) / "KB" / "imported-memory.md"
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text("\n".join(parts), encoding="utf-8")
     except OSError:
         pass
     return n
+
+
+def _hmatch(line: str, header: str) -> bool:
+    """标题行匹配：精确相等，或 header 后紧跟 全/半角括号 或 空格
+    （容忍 '## 通用铁律（说明…）' 这类带后缀标题，但不误匹配 '## 通用铁律X'）。"""
+    s = line.strip()
+    return s == header or s.startswith(header + "（") or s.startswith(header + "(") or s.startswith(header + " ")
+
+
+def _extract_section(text: str, header: str) -> str:
+    """取 markdown 中 header（## 级）到下一个 ## 之间的正文，strip。容忍带后缀标题。"""
+    out, grab = [], False
+    for ln in text.splitlines():
+        if _hmatch(ln, header):
+            grab = True; continue
+        if grab and ln.startswith("## "):
+            break
+        if grab:
+            out.append(ln)
+    return "\n".join(out).strip()
+
+
+def _extract_subsection(section_text: str, h3: str) -> str:
+    """在一段正文里取 h3（### 级）子节到下一个 ###/## 之间的正文，strip。"""
+    out, grab = [], False
+    for ln in section_text.splitlines():
+        if _hmatch(ln, h3):
+            grab = True; continue
+        if grab and (ln.startswith("### ") or ln.startswith("## ")):
+            break
+        if grab:
+            out.append(ln)
+    return "\n".join(out).strip()
+
+
+def _roundtable_memory(repo: str, project: str) -> tuple[list[str], int]:
+    """读 git 化的中立持久记忆 roundtable-memory/：成果 INDEX + 教训分层召回
+    （## 通用铁律 全量 + 仅当前 project 的 ### <project> 节，不读他项目、不读原始纪要）。
+    返回 (parts, n)。整体只读、容错。"""
+    root = Path(repo) / "roundtable-memory"
+    parts: list[str] = []
+    n = 0
+    if not root.is_dir():
+        return parts, n
+    idx = root / "INDEX.md"
+    if idx.exists():
+        try:
+            parts += ["## 圆桌成果索引（roundtable-memory/INDEX.md · 主源）",
+                      idx.read_text(encoding="utf-8", errors="replace")[:4000], ""]; n += 1
+        except OSError:
+            pass
+    lessons = root / "LESSONS.md"
+    if lessons.exists():
+        try:
+            text = lessons.read_text(encoding="utf-8", errors="replace")
+            general = _extract_section(text, "## 通用铁律")
+            proj_sec = _extract_section(text, "## 分项目教训")
+            proj = _extract_subsection(proj_sec, f"### {project}") if proj_sec else ""
+            body = []
+            if general:
+                body.append("### 通用铁律\n" + general)
+            if proj:
+                body.append(f"### 本项目（{project}）教训\n" + proj)
+            if body:
+                parts += ["## 圆桌教训库（LESSONS · 通用铁律全量 + 本项目，开会必读）",
+                          "\n\n".join(body), ""]; n += 1
+        except OSError:
+            pass
+    return parts, n
 
 
 def write_conclusion(repo: str, task: str, status: str, rounds: int, verdicts: list) -> None:
@@ -222,6 +312,169 @@ def write_conclusion(repo: str, task: str, status: str, rounds: int, verdicts: l
         (sd / "KB" / "conclusion.md").write_text("\n".join(lines), encoding="utf-8")
     except OSError:
         pass
+
+
+def archive_to_memory(repo: str, task: str, status: str, rounds: int, verdicts: list) -> None:
+    """记忆桥（出）：散会归档到 git 化的 roundtable-memory/。
+      - status==PASS：成果落 <project>/<topic>.md 叶子 + 更新 INDEX.md（档案馆只收定稿）
+      - 任何成败：抽综合席纪要 minutes/iter-*-claude-exec.md 的 `## 教训` 节 → LESSONS.md
+    纯标准库、指挥进程内执行、不调任何座位 → 天然 agent 无关。受 LOOP_ARCHIVE 控制（默认 '1'）。失败不抛。"""
+    if os.environ.get("LOOP_ARCHIVE", "1") != "1":
+        return
+    try:
+        root = Path(repo) / "roundtable-memory"
+        if not root.is_dir():
+            return
+        project = os.environ.get("LOOP_ARCHIVE_PROJECT") or Path(repo).name
+        sid = os.environ.get("LOOP_SESSION", "")
+        sd = session_dir(repo)
+        if status == "PASS":
+            _archive_result(root, project, task, status, rounds, verdicts, sid)
+        _archive_lessons(root, project, sd)
+    except Exception:
+        pass
+
+
+def _sid_date(sid: str) -> str:
+    """从 LOOP_SESSION 前缀 'YYYYMMDD-...' 取会话日期；解析不出回退今天。"""
+    m = re.match(r"(\d{4})(\d{2})(\d{2})", sid or "")
+    return f"{m.group(1)}-{m.group(2)}-{m.group(3)}" if m else datetime.date.today().isoformat()
+
+
+def _archive_result(root: Path, project: str, task: str, status: str,
+                    rounds: int, verdicts: list, sid: str) -> None:
+    """PASS 成果落叶子（不存在则建模板，存在则历次更新表 append）+ 更新 INDEX。"""
+    topic = _slug(task)
+    date = _sid_date(sid)
+    pdir = root / project
+    pdir.mkdir(parents=True, exist_ok=True)
+    leaf = pdir / f"{topic}.md"
+    if not leaf.exists():
+        leaf.write_text("\n".join([
+            f"# {task}", "",
+            f"- **日期**：{date}",
+            f"- **项目**：{project}",
+            f"- **圆桌会话**：{sid}",
+            f"- **状态**：定稿（{status}，共 {rounds} 轮：{', '.join(verdicts) or '—'}）", "",
+            "## 议题", task, "",
+            "## 结论", "本议题圆桌定稿；完整结论与各轮裁决见源指针 conclusion.md（可人工提炼补充本节）。", "",
+            "## 关键决策", "- （见 conclusion.md / minutes；可人工提炼补充）", "",
+            "## 源指针", "> 路径以仓库根为基准",
+            f"- KB 结论：`.roundtable/sessions/{sid}/KB/conclusion.md`",
+            f"- 座位发言：`.roundtable/sessions/{sid}/minutes/`", "",
+            "## 历次更新",
+            "| 日期 | 圆桌会话 | 变更摘要 |",
+            "|------|---------|---------|",
+            f"| {date} | {sid} | 初始定稿（{status}） |", "",
+        ]), encoding="utf-8")
+    else:
+        txt = leaf.read_text(encoding="utf-8", errors="replace")
+        row = f"| {date} | {sid} | 再次圆桌定稿（{status}） |"
+        if row not in txt:
+            leaf.write_text(txt.rstrip() + "\n" + row + "\n", encoding="utf-8")
+    _update_index(root, project, topic, task, date, status)
+
+
+def _update_index(root: Path, project: str, topic: str, task: str, date: str, status: str) -> None:
+    """在 INDEX.md 的 `## <project>` 节追加指向叶子的行，并删该节 '（尚无归档）' 占位。"""
+    idx = root / "INDEX.md"
+    if not idx.exists():
+        return
+    lines = idx.read_text(encoding="utf-8", errors="replace").splitlines()
+    target = f"]({project}/{topic}.md)"
+    if any(target in ln for ln in lines):
+        return  # 已索引
+    new_line = f"- [{task}]({project}/{topic}.md) — {date} · 定稿（{status}）"
+    res, in_sec, inserted = [], False, False
+    for ln in lines:
+        if _hmatch(ln, f"## {project}"):
+            res.append(ln); in_sec = True; continue
+        if in_sec and ln.startswith("## "):
+            if not inserted:
+                res.append(new_line); inserted = True
+            in_sec = False
+            res.append(ln); continue
+        if in_sec and ln.strip() == "- （尚无归档）":
+            continue  # 删占位
+        res.append(ln)
+    if in_sec and not inserted:
+        res.append(new_line); inserted = True
+    if inserted:
+        idx.write_text("\n".join(res) + "\n", encoding="utf-8")
+
+
+def _archive_lessons(root: Path, project: str, sd: Path) -> None:
+    """抽综合席纪要的 `## 教训` 节（### 通用 / ### <项目>）→ LESSONS.md 对应区，SHA-256 去重。"""
+    lessons_path = root / "LESSONS.md"
+    mdir = sd / "minutes"
+    if not lessons_path.exists() or not mdir.is_dir():
+        return
+    general_new, proj_new = [], []
+    for m in sorted(mdir.glob("iter-*-claude-exec.md")):
+        try:
+            sec = _extract_section(m.read_text(encoding="utf-8", errors="replace"), "## 教训")
+        except OSError:
+            continue
+        if not sec:
+            continue
+        general_new += _lesson_items(_extract_subsection(sec, "### 通用"))
+        proj_new += _lesson_items(_extract_subsection(sec, f"### {project}"))
+    if not general_new and not proj_new:
+        return
+    text = lessons_path.read_text(encoding="utf-8", errors="replace")
+    if general_new:
+        text = _append_to_section(text, "## 通用铁律", None, general_new)
+    if proj_new:
+        text = _append_to_section(text, "## 分项目教训", f"### {project}", proj_new)
+    lessons_path.write_text(text, encoding="utf-8")
+
+
+def _lesson_items(section_text: str) -> list[str]:
+    """从子节正文挑真条目（'- ' 开头、非模板占位）。"""
+    items = []
+    for ln in section_text.splitlines():
+        s = ln.strip()
+        if not s.startswith("- "):
+            continue
+        body = s[2:].strip()
+        if not body or body[0] in "（(":  # 跳过 （本次…）/（无） 这类占位
+            continue
+        items.append(s)
+    return items
+
+
+def _append_to_section(text: str, h2: str, h3, items: list[str]) -> str:
+    """把 items 追加到 h2 节（h3=None）或 h2 内 h3 子节末尾；SHA-256 文本去重。"""
+    existing = {hashlib.sha256(i.strip().encode("utf-8")).hexdigest()
+                for i in text.splitlines() if i.strip().startswith("- ")}
+    fresh = []
+    for it in items:
+        h = hashlib.sha256(it.strip().encode("utf-8")).hexdigest()
+        if h not in existing:
+            existing.add(h); fresh.append(it)
+    if not fresh:
+        return text
+    res, in_h2, in_target, inserted = [], False, False, False
+    for ln in text.splitlines():
+        if _hmatch(ln, h2):
+            res.append(ln); in_h2 = True; in_target = (h3 is None); continue
+        if in_h2 and ln.startswith("## "):
+            if in_target and not inserted:
+                res += fresh; inserted = True
+            in_h2 = in_target = False
+            res.append(ln); continue
+        if in_h2 and h3 is not None:
+            if _hmatch(ln, h3):
+                res.append(ln); in_target = True; continue
+            if in_target and ln.startswith("### "):
+                if not inserted:
+                    res += fresh; inserted = True
+                in_target = False
+                res.append(ln); continue
+        res.append(ln)
+    if in_target and not inserted:
+        res += fresh; inserted = True
+    return "\n".join(res) + ("\n" if text.endswith("\n") else "")
 
 
 def extract_plan(text: str) -> list[dict]:
@@ -335,6 +588,7 @@ def run(repo, task, commander="claude", reviewer="codex", max_iters=5, test_cmd=
 
     status = status or "CAP"
     write_conclusion(repo, task, status, final_it, verdicts)
+    archive_to_memory(repo, task, status, final_it, verdicts)  # 记忆桥（出）：归档到 git 化的 roundtable-memory/
     reporter.finish(status, final_it)
     return {"PASS": 0, "ERR": 1, "CAP": 2}[status]
 

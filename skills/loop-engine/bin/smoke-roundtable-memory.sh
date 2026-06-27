@@ -15,7 +15,9 @@ source "${SCRIPT_DIR}/_lib.sh"
 
 REPO="$(loop_resolve_repo "${1:-$(pwd)}")"
 TABLE="$(loop_table_dir "${REPO}")"
-BASELINE="${2:-${TABLE}/KB/baseline-imported-memory.md}"
+BASELINE="${2:-${REPO}/.roundtable/KB/baseline-imported-memory.md}"
+TMP_DIR="$(mktemp -d)"
+trap 'rm -rf "${TMP_DIR}"' EXIT
 
 cd "${REPO}"
 
@@ -26,6 +28,10 @@ TOTAL=0
 # ---- helpers ----
 PY_BASE="import sys; sys.path.insert(0,'${SCRIPT_DIR}'); import conductor, os; os.environ['LOOP_SESSION']='smoke-$$'"
 PY_IMPORT="${PY_BASE}; r='${REPO}'; n=conductor.import_memory(r); print(n, 'sources imported'); open('/dev/stdout','w').write(open(os.path.join(r,'.roundtable','sessions',os.environ['LOOP_SESSION'],'KB','imported-memory.md')).read())"
+# 纯内容版（不打印计数行，供逐字对照 baseline）
+PY_IMPORT_RAW="${PY_BASE}; r='${REPO}'; conductor.import_memory(r); sys.stdout.write(open(os.path.join(r,'.roundtable','sessions',os.environ['LOOP_SESSION'],'KB','imported-memory.md')).read())"
+# 只打印源数（供 collect_num_sources 稳定取数）
+PY_NUM="${PY_BASE}; r='${REPO}'; print(conductor.import_memory(r))"
 PY_ARCHIVE="${PY_BASE}; r='${REPO}'; conductor.archive_to_memory(r,task='smoke test',status='PASS',rounds=1,verdicts=['PASS'])"
 
 RESULT_DIR="${TABLE}/KB"  # 测试产物放 KB（同 baseline 位置）
@@ -38,7 +44,7 @@ collect_imported() {
   # 调用 import_memory() 并输出 imported-memory.md 内容到 stdout
   local f="${TMP_DIR}/imported-$$.md"
   mkdir -p "$(dirname "$f")"
-  python3 -c "${PY_IMPORT}" > "$f" 2>/dev/null || { rm -f "$f"; return 1; }
+  python3 -c "${PY_IMPORT_RAW}" > "$f" 2>/dev/null || { rm -f "$f"; return 1; }
   cat "$f"
   rm -f "$f"
 }
@@ -47,14 +53,14 @@ collect_imported_raw() {
   # 只收集 imported-memory.md 内容，不分行处理
   local f="${TMP_DIR}/imported-raw-$$.md"
   mkdir -p "$(dirname "$f")"
-  python3 -c "${PY_IMPORT}" > "$f" 2>/dev/null || { rm -f "$f"; return 1; }
+  python3 -c "${PY_IMPORT_RAW}" > "$f" 2>/dev/null || { rm -f "$f"; return 1; }
   cat "$f"
   rm -f "$f"
 }
 
 collect_num_sources() {
   # 只返回 sources count
-  python3 -c "${PY_IMPORT}" 2>/dev/null | head -1 | grep -oE '^[0-9]+' || echo 0
+  python3 -c "${PY_NUM}" 2>/dev/null | grep -oE '^[0-9]+' | head -1 || echo 0
 }
 
 echo ""
@@ -99,8 +105,8 @@ else
   ERR=0
   # 检查通用铁律
   if echo "$OUT_RAW" | grep -qE '通用铁律|通用教训'; then :; else echo "  ⚠ 缺少通用铁律"; ERR=1; fi
-  # 检查分项目
-  if echo "$OUT_RAW" | grep -qE '分项目教训'; then :; else echo "  ⚠ 缺少分项目教训"; ERR=1; fi
+  # 检查成果索引（新源主源；分项目教训当前 agents 节为空属正常，不强检）
+  if echo "$OUT_RAW" | grep -qE '圆桌成果索引'; then :; else echo "  ⚠ 缺少成果索引"; ERR=1; fi
   # 检查旧源（CLAUDE.md 或 Claude 项目记忆或过往会话结论）
   if echo "$OUT_RAW" | grep -qE 'CLAUDE\.md|Claude 项目记忆'; then :; else echo "  ⚠ 缺少旧源"; ERR=1; fi
   if [ "$ERR" -eq 0 ]; then
