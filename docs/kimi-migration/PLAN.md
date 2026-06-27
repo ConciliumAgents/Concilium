@@ -16,9 +16,8 @@
 > ### 📌 v4 变更摘要（在 v3 基础上迭代，2026-06-27 · 专修 v3 验证席 kimi BLOCK 项 + hermes 复审遗漏）
 > 本轮综合席只清矛盾、不重写。v3 摘要曾声称"§D 11 处硬伤逐条修"，但 §A.3 自建记忆系统正文仍占位、§D 阶段 1 的
 > chmod / cp 原样保留 bug、§F.8–F.16 缺失、§E 仍按 agent-reach 写验收——v3 摘要 ↔ 正文断层。v4 逐项落地：
-> - **CRITICAL · `config/mcporter.json` 还原**：v3（commit 433bdd5）把已跟踪的 `config/mcporter.json` 一并误删提交，
->   违反本轮"只读、不改任何现有文件"红线；v4 用 `git show 433bdd5^:config/mcporter.json` 把内容还原并重新入 git，工作树新增项**只剩 `docs/kimi-migration/`**。
->   *说明*：该 `exa` MCP 配置因 agent-reach 生态删除而事实失效，但**它的删除应由用户单独显式决定**，不在本只读轮夹带——本轮先还原，后续是否清退留人工。
+> - **CRITICAL · `config/mcporter.json` 已由用户授权清退（既定事实，勿还原）**：⚠️ **SUPERSEDED（2026-06-27 · commit `35dc571`「清退 agent-reach 的 mcporter 配置」）**。
+>   v4 草稿一度把该文件还原入 git；其后用户已授权将它连同整个 agent-reach 生态一并删除并提交（`35dc571`）——**这是既定事实、不是违规**。本轮 exec 席据此据实改：**不再还原、不 `git checkout` 它、不在 PLAN 里建议恢复**（本轮铁律）。该 `exa` MCP 配置随 agent-reach 删除而事实失效，Kimi 侧是否另需 exa 类网络搜索由用户单独决定（§E.1）。**本轮工作树新增/改动只剩 `docs/kimi-migration/PLAN.md`。**
 > - **HIGH · §A.3 自建记忆系统从"格式未知"翻成实勘逐行盘点**：fba.db（2.27MB）+ `src/state_machine.py` 的 `StateMachine.transition()` 强制入口（禁直接 UPDATE）+ `candidates/` 2577 目录 + `config/*.yaml` **17 个**（含 `validation/`）config-as-memory + `decisions/`（decision-log + 5 dated）+ `.claude/`（agents×5 / commands×**23** / skills×6）+ SessionStart 不变式 F/G/H + audit。消除"摘要声称做了 / 正文没做"的断层。
 > - **HIGH · §D 11 硬伤逐条真改 + 新增"硬伤对照表"**：阶段 1.2 改 `cp -RPp` / `rsync -aH`；阶段 1.3 改"只锁文件不锁目录" + "回滚前 `chmod -R u+w`"；阶段 1.x 新增 `--dry-run` / 审计日志 / 磁盘预检（引 `00-inventory.sh §6`）；阶段 2.2 取最新依据**写明 mtime / 日期 / git 时序（非 UUID `originSessionId`）**；阶段 2.x 归并**只产草案 + `MERGE-LOG.md`**，人工审定后才写入 Kimi 侧。每条在 §D 头部对照表里坐实状态，不再只在摘要声称。
 > - **HIGH · §E 清掉 agent-reach 残留验收**：E.1 删 `~/.kimi-code/skills/agent-reach/`、`sync-agent-reach-skill.sh` hook、`mcp.json exa server` 三项；E.5 整体重写为"承接后真实仍需的 skills/hooks 验收"。E.1/E.5 与 §A1-3 SUPERSEDED 注的冲突消除。
@@ -45,9 +44,9 @@
 | 当前 output-style「拉姆」全文 | ✅ 在本会话 context | 已确认存在；目录内其它风格文件待补 |
 | `~/.claude/` 其余子目录（output-styles/ skills/ hooks/ settings*.json） | ❌ `ls` 被"仅工作目录"策略拦；`Read` 需交互授权而本会话无人批准 | **待补盘点项**，见 §A.5，给出补盘命令 |
 | `/Users/melee/Documents/amazon-fba-workflow/**`（项目2，含自建记忆系统） | ❌ 同上，读不到 | **待补盘点项**，见 §A.3 / §A.5 |
-| `/Users/melee/Documents/finance/**`（项目3） | ❌ 同上，读不到 | **待补盘点项**，见 §A.4 / §A.5 |
+| `/Users/melee/Documents/finance/**`（项目3） | ❌ 本轮 exec 直接读被拦（仅工作目录策略） | §A.4 **已据第二轮跨目录实勘 + kimi-exec 物理 ls 填实**；执行轮以 §附录 `00-inventory.sh` 复核体量/计数 |
 | `~/.claude/projects/-Users-melee-Documents-amazon-fba-workflow*/memory/`（含 worktree 子路径） | ❌ 读不到 | **待补盘点项**，归并方案见 §A.3 |
-| `~/.claude/projects/-Users-melee-Documents-finance/memory/` | ❌ 读不到 | **待补盘点项** |
+| `~/.claude/projects/-Users-melee-Documents-finance/memory/` | ❌ 本轮 exec 直接读被拦 | §A.4 A4-6 **已据 kimi-exec 物理 ls 填实（5 个 .md 含文件名/体量）**；执行轮复核 |
 | `~/.claude/projects/-Users-melee/`（home 级记忆） | ❌ 读不到 | **待补盘点项** |
 
 **结论**：项目1 与全局行为准则/项目1记忆可据实盘点；项目2、项目3 与 `~/.claude` 多数子目录需在一个**有 `~/.claude` 与 `~/Documents` 只读权限的会话**里跑 §附录的 `00-inventory.sh` 一键补齐。补齐前，下游 §A.3/§A.4 的体量与性质判定均带 `（待补）` 标记，不得当作既定事实执行。
@@ -76,7 +75,7 @@
 | A1-1 | 全局行为准则 CLAUDE.md | `~/.claude/CLAUDE.md` | **6088B / 126 行**。含 6 大节：业务适配层 / Think Before Acting / Simplicity First / Surgical Changes / Goal-Driven Execution / Knowledge Supersession / 别把幻觉当事实 | 内容直搬，载体见 §B（→ Kimi `AGENTS.md`） | ✅ 实勘 |
 | A1-2 | 输出风格「拉姆」 | `~/.claude/output-styles/ram.md` | **3811B**（另有 `ram.md.bak-2026-06-25` 1321B 备份） | **替代/重写**（output-styles 是 Claude 特有机制，Kimi 无等价；降级为 `AGENTS.md` 人设章节，见 §B.2-1） | ✅ 实勘 |
 | A1-3 | 本地 skills | `~/.claude/skills/` | **现已实勘为空** | — | ✅ 实勘（见下方 SUPERSEDED 注） |
-| A1-4 | 本地 hooks | `~/.claude/hooks/` | 第二轮实勘仅 `sync-agent-reach-skill.sh`（1882B）；**该 hook 随 agent-reach 生态删除** | 由 settings.json 接线 → 见 §A.7 执行轮复核 | ⚠️ 删后现状待 `00-inventory.sh` 复核 |
+| A1-4 | 本地 hooks | `~/.claude/hooks/` | 第二轮实勘仅 `sync-agent-reach-skill.sh`（1882B）；**该 hook 随 agent-reach 生态删除** | 由 settings.json 接线 → 见 §A.5 项 3 / §D 阶段 0 复核 | ⚠️ 删后现状待 `00-inventory.sh` 复核 |
 | A1-5 | 全局 settings | `~/.claude/settings.json`（85 行）+ `settings.local.json`（155 行） | **2335B + 9292B** | 需转换为 Kimi `config.toml` 等价键（见 §B） | ✅ 实勘 |
 | A1-6 | home 级记忆 | `~/.claude/projects/-Users-melee/memory/` | **15 个 .md**（14 内容 + MEMORY.md） | 内容可搬；frontmatter 私有 schema 需转换 | ✅ 实勘 |
 | A1-7 | plugins（**非本地资产**） | `~/.claude/plugins/` | **46M** | **不迁**；满屏 `superpowers:*`/`agent-skills:*`/`document-skills:*`/`codex:*` 命名空间 skill 全部来自此处，MANIFEST 仅登记来源 | ✅ 实勘 |
@@ -95,7 +94,7 @@
 | A2-4 | 设计 spec | `docs/superpowers/specs/2026-06-24-loop-engine-design.md` | docs/ 共 20K | 直搬 | ✅ 已盘点 |
 | A2-5 | 本轮迁移文档 | `docs/kimi-migration/`（`SMOKE.md` + 本 `PLAN.md`） | 同上 | 直搬 | ✅ 已盘点 |
 | A2-6 | 仓内权限白名单 | `.claude/settings.local.json` | 4K，10 条 Bash allow | **需转换**（Claude 权限格式 → Kimi 等价；其中 `claude`/`codex`/`hermes` 相关条目语义随主持方变） | ✅ 已盘点 |
-| A2-7 | MCP 配置 | `config/mcporter.json` | 4K（`exa` 一个 server） | 直搬（mcporter 通用，非 Claude 私有） | ✅ 已盘点 |
+| A2-7 | MCP 配置（**已清退**） | `config/mcporter.json` —— **已由用户授权删除**（commit `35dc571`，随 agent-reach 生态清退） | 原 4K（`exa` 一个 server）；现**仓内已无此文件**（`git ls-files` 不含、磁盘不存在） | `exa` 随 agent-reach 删除而失效 → **不迁、不还原**；Kimi 侧是否另需 exa 留用户单独决定（§E.1） | ⚠️ 已清退（2026-06-27） |
 | A2-8 | 启动器 + 软链 | `roundtable`（仓根脚本，1787B）+ `~/.local/bin/roundtable`（软链，记忆载） | — | 脚本直搬；软链需在 Kimi 侧重建 | ✅ 已确认（软链由记忆佐证，物理 readlink 待补） |
 | A2-9 | 项目1记忆 | `~/.claude/projects/-Users-melee-Documents-agents/memory/`（`MEMORY.md` 索引 + 至少 4 文件：`codex-app-slimming.md` `consult-before-building.md` `hermes-agent-coexists.md` `loop-engine-roundtable-project.md`） | 内容已在 KB；物理文件数/体量待 `wc` | 内容可搬；**frontmatter（`node_type`/`type`/`topic`/`originSessionId`/`audit_allow_numbers`）是 Claude 记忆私有 schema → 需转换为 Kimi 记忆形态**（§B） | ✅ 内容已盘点，物理清单待补 |
 | A2-10 | venv（运行依赖） | `.venv/`（rich 15.0.0） | gitignored | **不迁**（目标机 `pip install` 重建即可，迁移清单仅记依赖版本） | ✅ 已确认 |
@@ -125,16 +124,28 @@
 >
 > **worktree 归并据实**：`find ~/.claude/projects -name memory -type d` 全仓只 4 个 memory 目录（agents / amazon-fba 主 / finance / home）；amazon-fba 全部 worktree + finance 全部均无 `memory/`。剧本 §D 阶段 2 对 amazon-fba 是**空操作**，但**目录存在却无 memory/ 本身是事实**，`00-inventory.sh §2` 已区分"存在无 memory/"与"存在有 memory/"两种状态写入 `inventory.json`。
 
-### A.4 项目3 —— `/Users/melee/Documents/finance` 🔲 整体待补
+### A.4 项目3 —— `/Users/melee/Documents/finance`（amazon-fba 的轻量同构版 · 第二轮跨目录只读实勘）
 
-本会话读不到。结构化待补清单：
+> ⚠️ **数据出处（诚实交代）**：本轮 exec 席沙箱**仅限工作目录**，直接 `ls /Users/melee/Documents/finance` 与
+> `~/.claude/projects/-Users-melee-Documents-finance/memory/` 均被策略拦（§0 边界）。下表**不是本轮 exec 重读**，
+> 而是回读黑板上已录的第二轮实勘——总指挥跨目录只读盘点（`minutes/iter-1-claude-plan.md §A.4`）+ kimi-exec 对 finance
+> memory 目录的物理 `ls -l`（`minutes/iter-1-kimi-exec.md` "--- finance memory ---"）+ hermes 体量复核（17M / 无 worktree）。
+> 三方一致、可指认，故由 v3 的"🔲 整体待补"翻成实勘；本 exec 席无法独立复验的部分仍标注。
 
-| # | 资产 | 预期路径 | 性质（初判，待证） | 状态 |
-|---|---|---|---|---|
-| A4-1 | 仓内 CLAUDE.md | `finance/CLAUDE.md`（及子目录） | 内容直搬，载体待 §B | 🔲 待补 |
-| A4-2 | 源码与配置 | 仓内全部 | 直搬/转换 | 🔲 待补 |
-| A4-3 | 项目记忆 | `~/.claude/projects/-Users-melee-Documents-finance/memory/` | 内容可搬，frontmatter 需转换 | 🔲 待补 |
-| A4-4 | worktree 记忆（若有） | `~/.claude/projects/-Users-melee-Documents-finance-*/memory/` | 同 A3-5 归并规则 | 🔲 待补 |
+| # | 资产 | 确切路径 | 实测（第二轮） | 性质（初判） | 状态 |
+|---|---|---|---|---|---|
+| A4-0 | finance 映射总量 | `~/.claude/projects/-Users-melee-Documents-finance/` | **17M；无任何 worktree 衍生映射**（hermes 复核 ✓） | — | ✅ 实勘 |
+| A4-1 | 仓内 CLAUDE.md | `finance/CLAUDE.md` | **2240B**（远轻于 amazon-fba 的 11136B） | 内容**直搬**，载体见 §B（→ Kimi `AGENTS.md`） | ✅ 实勘 |
+| A4-2 | SQLite 真相源 | `data/finance.db` | **28672B**（与 amazon-fba `fba.db` 同构但小） | db 文件**直搬**（agent 中立，随仓直搬，同 A3-1） | ✅ 实勘 |
+| A4-3 | markdown 状态 + 税务产物 | `data/{bank-accounts,pending-resume,personal-advance-ai}.md` + `etax/{invoices,receipts,tax-consult}/`（另有 `etax/its-login` `.yml`+`.png` 门户脚本/截图） | 税务自动化派生件 | 派生 markdown/yaml/png，**直搬** | ✅ 实勘 |
+| A4-4 | config-as-memory | `config/{company,fx,tax_cn}.yaml` | `tax_cn.yaml` **9181B** | 易变事实的"家"，**直搬**（同 A3-5） | ✅ 实勘 |
+| A4-5 | 项目级 Claude 面 | `finance/.claude/` | **仅 `settings.json` 317B + `settings.local.json` 151B；无 `agents/`/`commands/`/`skills/`** | 极简 → settings **需转换**（Claude 权限格式 → Kimi `config.toml`）；无 commands/agents/skills，迁移成本远低于 amazon-fba | ✅ 实勘 |
+| A4-6 | ~/.claude 项目记忆 | `~/.claude/projects/-Users-melee-Documents-finance/memory/` | **5 个 .md**（4 内容 + `MEMORY.md`，kimi-exec 物理 ls ✓）：`feedback-trust-ground-truth-over-own-claims.md`(1864B)、`feedback-verify-on-the-spot.md`(938B)、`feedback-verify-primary-source-before-asserting.md`(1094B)、`project-expense-intake-role.md`(1238B)、`MEMORY.md`(555B) | 内容可搬，**frontmatter 私有 schema 需转换**（损耗见 §F.9：finance 计 5 条） | ✅ 实勘 |
+| A4-7 | worktree 记忆 | `~/.claude/projects/-Users-melee-Documents-finance-*/memory/` | **无任何 finance worktree 映射**（hermes ✓）→ 归并对 finance 是**空操作**（同 A3-10） | 据实"无归并" | ✅ 实勘 |
+
+> **要点（给执行轮）**：finance 是 amazon-fba 的轻量同构版——同样是 SQLite 真相源 + config-as-memory + 仓内 markdown，但
+> **无项目级 `.claude/` 的 agents/commands/skills、无自建不变式钩子、无 worktree**，承接难度远低于 amazon-fba。Claude 专属需转换的只有
+> ① `finance/.claude/settings*.json`（权限格式）② 5 个 frontmatter 记忆。其余随仓直搬。本 exec 席沙箱未能独立复验，执行轮仍须以 §D 阶段 0 `00-inventory.sh` 实跑坐实上表体量/计数。
 
 ### A.5 待补盘点项汇总（补齐 = 跑一次 §附录 `00-inventory.sh`）
 
@@ -196,13 +207,11 @@
   - **MCP 迁移**：把 `.mcp.json` 改名为/复制到 `.kimi-code/mcp.json`；HTTP 条目保留 `url`，删除 Claude 侧可能多余的 `type` 字段（Kimi 会忽略，但为清晰可删）。
 - 承接判定：**commands/agents → 重写为 Skill/AGENTS.md 指令；skills → 转换；MCP → 转换/直搬**。
 
-#### 3) SessionStart 不变式钩子（`sync-agent-reach-skill.sh`）
-- 现状：`~/.claude/settings.json` 中 `hooks.SessionStart` 调用 `bash "$HOME/.claude/hooks/sync-agent-reach-skill.sh"`，该脚本从上游 `~/.agents/skills/agent-reach` 取 body，重写标准 frontmatter 后写入 `~/.claude/skills/agent-reach`，保证 Claude 每次启动都有最新版 agent-reach。
-- Kimi 侧：
-  - Kimi Hooks 在 `~/.kimi-code/config.toml` 中配置：`[[hooks]] event = "SessionStart" matcher = "startup" command = "bash ~/.kimi-code/hooks/sync-agent-reach-skill.sh" timeout = 15`。
-  - `SessionStart` 在 Kimi 是**观察事件、不可阻塞**，与 Claude 的 SessionStart 命令语义相同（用于同步），可直接承接。
-  - 需要新建/修改一份 Kimi 版同步脚本 `~/.kimi-code/hooks/sync-agent-reach-skill.sh`：上游仍为 `~/.agents/skills/agent-reach`，目标改为 `~/.kimi-code/skills/agent-reach`（Kimi 专属用户级 skill 目录），frontmatter 按 Kimi schema 规范化（`name`/`description`/`type`/`whenToUse`/`disableModelInvocation`）。
-- 承接判定：**转换**（接线位置从 `settings.json` 改到 `config.toml [[hooks]]`，脚本目标目录改为 `~/.kimi-code/skills/`）。
+#### 3) SessionStart 钩子承接（机制 + amazon-fba 不变式钩子）
+- ⚠️ **agent-reach sync 钩子已退役、不再作承接对象**：v1/v2 曾以 `~/.claude/hooks/sync-agent-reach-skill.sh`（从上游 `~/.agents/skills/agent-reach` 同步 skill 到 `~/.claude/skills/agent-reach`）当作 hook 迁移示范——该脚本随 agent-reach 整个生态于 2026-06-27 彻底删除（A1-3 SUPERSEDED 注），**同步目标已不存在**。第二轮实勘时 `~/.claude/hooks/` 仅此一个脚本；删除后**全局本地 hook 可能已空**，须由 §D 阶段 0 `00-inventory.sh §4` 实测坐实——**若实测为空，则"~/.claude/hooks/ 已空、无全局本地 hook 需迁"**。
+- **实际仍需承接的 SessionStart 钩子 = amazon-fba 的不变式扫描**（不变式 F/G/H + audit，§A3-7 / §F.11）：经 `~/.claude/settings.json` 的 `hooks.SessionStart` 接线，启动时自动扫描"退役/推翻同步、禁抄易变事实"等记忆纪律。这是"完美承接"最易丢的一环（§F.11 标 🔴）。
+- **Kimi 侧承接机制**：Kimi Hooks 统一在 `~/.kimi-code/config.toml` 的 `[[hooks]]` 数组配置：`[[hooks]] event = "SessionStart" matcher = "startup" command = "bash <脚本>" timeout = 15`；`SessionStart` 在 Kimi 是**观察事件、不可阻塞**，与 Claude 的 SessionStart 语义相同。
+- 承接判定：**转换**——接线位置从 `settings.json` 改到 `config.toml [[hooks]]`。但**究竟迁哪些脚本、脚本路径与内容**，必须等 §D 阶段 0 实测 `settings.json hooks.SessionStart` 的真实条目后坐实（当前对不变式钩子是"读 CLAUDE.md 推断、非实测接线"，hermes 第二轮 L92 / §F.11）。若 amazon-fba 不变式脚本无法迁到 Kimi hooks，按 §F.11 替代建议降级为"人工定期审计清单"。
 
 ### B.3 会话历史 `.jsonl` 的处理策略（第 7 项）
 
@@ -283,7 +292,7 @@
 ```
 
 要点：
-- `00-raw` 是**只读拷贝**，权限设 `chmod -R a-w` 防误改，保证可回滚到 Claude 原貌。
+- `00-raw` 是**只读拷贝**，**只锁文件不锁目录**防误改（`find 00-raw -type f -exec chmod a-w {} +`；目录保持可写，回滚前先 `chmod -R u+w` —— 与 §D 步 1.3 / 硬伤 #3 一致），保证可回滚到 Claude 原貌。
 - plugin 提供的 skills **不进镜像**（非用户资产），MANIFEST 仅登记"来自哪个 plugin"。
 - `.roundtable/`（gitignored，424K 圆桌活记忆）**必须显式纳入** `00-raw/repos/agents/`，否则丢失。
 - 三层之间**单向**（raw→normalized→kimi），每层产物可独立校验，任一层错不污染上游。
@@ -360,7 +369,7 @@
 - [ ] `~/.kimi-code/AGENTS.md` 存在且包含从 `~/.claude/CLAUDE.md` 迁移的全局行为准则（抽查：文件中出现 "Think Before Acting" / "Surgical Changes" / "Goal-Driven Execution" 等关键词）；以及从 `~/.claude/output-styles/ram.md` 迁入的"拉姆 persona"章节（抽查：出现 "拉姆" 自称、"主人" 称呼、"事实与技术内容绝不打折"等关键词）。
 - [ ] `~/.kimi-code/config.toml` 中按 `~/.claude/settings.json` 迁来的 hooks 在 `[[hooks]]` 数组中至少包含一个 `event = "SessionStart"` 的真实仍需 hook（**v4 据实**：v3 写的 `sync-agent-reach-skill.sh` 已随 agent-reach 生态于 2026-06-27 删除，A1-3 SUPERSEDED 注；本项验收等阶段 0 `00-inventory.sh §4` 实测 `~/.claude/hooks/` + `settings.json hooks.SessionStart` 现状坐实"承接后真实仍需的 hook"清单后填充，**当前承接清单可能为空**——空集合也是合法结果）。
 - [ ] `~/.kimi-code/skills/` 下存在从 `~/.claude/skills/` **实勘所得本地 skills** 迁来的目录（**v4 据实**：`~/.claude/skills/` 已实勘为空，A1-3；本项当前预期为"零迁入 skills"，仅核对"迁移过程未误把 `~/.claude/plugins/` 下的 plugin skills 当作本地资产"）。
-- [ ] `~/.kimi-code/mcp.json` 存在且：① 含 amazon-fba 项目级 `.mcp.json` 迁入的 `sorftime` server（由 §E.3 复核）；② **是否承接 agents 仓 `config/mcporter.json` 的 `exa` server 留人工决定**（exa 原属 agent-reach 生态、agent-reach 已删 → exa 事实失效；但 `config/mcporter.json` 文件本身在本只读轮已还原入 git，删除应由用户单独显式做，不在本承接验收里强求）。
+- [ ] `~/.kimi-code/mcp.json` 存在且：① 含 amazon-fba 项目级 `.mcp.json` 迁入的 `sorftime` server（由 §E.3 复核）；② **agents 仓原 `config/mcporter.json` 的 `exa` server 不在承接验收内**——该文件已随 agent-reach 生态由用户授权清退（commit `35dc571`，仓内已无此文件，A2-7）；Kimi 侧是否另需 exa 类网络搜索由用户单独决定（默认改用内置 WebSearch/WebFetch）。
 - [ ] `kimi doctor` 输出 `All checked config files are valid.`。
 
 ### E.2 项目1 `/Users/melee/Documents/agents`
@@ -385,10 +394,15 @@
 - [ ] `~/.claude/projects/-Users-melee-Documents-finance/memory/*.md` 的内容已转入 `.kimi-code/AGENTS.md` 或归档，关键 feedback（如 `feedback-trust-ground-truth-over-own-claims`）可被 `grep` 命中。
 - [ ] 冷启动验证：`cd /Users/melee/Documents/finance && kimi --plan -p "本项目的事实核对规则是什么？"` 的输出包含 "trust ground truth" / "verify" / "primary source" 等关键词。
 
-### E.5 skills / hooks 可触发
+### E.5 skills / hooks 可触发（据实 · agent-reach 已退役）
 
-- [ ] 在 agents 目录冷启动后，输入 `/skill:agent-reach`（或自动触发 research 类问题）能调用到迁移后的 agent-reach skill；TUI 中 skill 列表可见 `agent-reach`。
-- [ ] SessionStart hook 可执行：新建一个 Kimi 会话，`~/.kimi-code/skills/agent-reach/SKILL.md` 的 mtime 不早于会话启动时间（说明 hook 已运行同步）。
+> **v4 据实**：v3 此处验收 `agent-reach` skill 与其 sync hook，但 agent-reach 整个生态已于 2026-06-27 删除（A1-3 SUPERSEDED 注），`~/.claude/skills/` 实勘为空。本节改为验收**承接后真实仍需的 skills / hooks**，不再引用 agent-reach。
+
+- [ ] **Skills 可触发**：迁移后真实存在的 skills 可被调用——
+  - amazon-fba 6 个 skill（`screening`/`discovery`/`compliance`/`draft-listing`/`source-suppliers`/`listing-style-guide`，§E.3）已落 `.kimi-code/skills/`，冷启动后 `/skill:screening`（或自动触发对应问题）可命中，TUI skill 列表可见；
+  - loop-engine 若选择迁为 skill，`/skill:loop-engine` 可命中（否则按 §E.2 验收"项目 AGENTS.md 引用了 loop-engine 启动方式"）。
+  - **零本地全局 skill 误迁**：核对未把 `~/.claude/plugins/` 的 plugin skills 当本地资产迁入（§F.13）；`~/.claude/skills/` 本地实勘为空 → 全局 skills 迁入数应为 0。
+- [ ] **SessionStart hook 可触发**（仅当阶段 0 实测确有需迁的 hook）：新建 Kimi 会话后，迁移的不变式扫描 hook（amazon-fba F/G/H，§B.2-3 / §F.11）按 `config.toml [[hooks]]` 执行，可在 hook 日志/副作用中观察到运行。**若阶段 0 实测 `~/.claude/hooks/` + `settings.json hooks.SessionStart` 无可迁条目（agent-reach 删后全局本地 hook 已空），本项为"无 hook 需迁"的空集合，合法跳过。**
 
 ### E.6 记忆完整性（量化）
 
@@ -399,16 +413,51 @@
 
 - [ ] `MANIFEST.md` 中明确列出“未迁移/无对应”项：Claude `outputStyle`（已降级为 AGENTS.md 人设章节）、`enabledPlugins`、`extraKnownMarketplaces`、`statusLine`、Claude 内置 slash command 等。
 
-## §F 风险与未知〔占位 · 待 hermes 复审补强；执行席先列已确定项〕
+## §F 风险与未知
 
-执行席已能确定的风险（hermes 请挑刺补充）：
+> §F.1–F.7 为执行席首轮列出的已确定风险；§F.8–F.16 为 hermes 第二轮异质复审补强的 **9 条**，
+> 原文见 `.roundtable/sessions/20260627-001238-…/minutes/iter-1-hermes-exec.md §八`，v4 逐条并入正文
+> （正文 §A3-7/§A3-9/§A3-10/§D 步 1.2 对 §F.8 / §F.9 / §F.11 / §F.14 的交叉引用据此落地、不再悬空）。
+> hermes §八 另有一条 🟢 F.17（worktree↔主 session 关联断裂，风险级别低、迁移后本不复刻），不在"9 条"补强清单内，故此处不展开。
+
+### F.1–F.7 · 执行席首列（第一轮）
+
 1. **路径映射陷阱**：worktree 各自映射独立 `projects/<映射>/memory`，漏枚举 = 丢记忆；目录名是绝对路径 `/`→`-`，路径含特殊字符时映射可能不直观。
-2. **gitignored 活记忆丢失**：agents 的 `.roundtable/`（424K 圆桌历史）不在 git，常规"clone 仓库"迁移会整丢，必须显式镜像。
-3. **记忆私有格式**：Claude memory frontmatter（`node_type`/`topic`/`originSessionId`/`audit_allow_numbers`）+ amazon-fba **自建记忆系统**格式未知，Kimi 无对应字段时转换有信息损耗。
-4. **output-styles 无对应**：「拉姆」persona 若 Kimi 无 output-style 机制，需降级为系统提示，行为可能漂移。
-5. **plugin vs 本地 skills 混淆**：误把 plugin skills 当用户资产迁移 = 既冗余又可能版本冲突。
-6. **座位适配层耦合**：loop-engine 座位脚本硬编码 `claude -p`/`codex`/`hermes` CLI，Kimi 主持需重写，否则圆桌跑不起来。
-7. **本轮盘点盲区**：项目2/3 与 `~/.claude` 多数子目录未实测（§A.5），性质判定是初判，执行前必须先跑阶段 0 补全，否则可能基于错误前提迁移。
+2. **gitignored 活记忆丢失**：agents 的 `.roundtable/`（424K 圆桌历史）不在 git，常规"clone 仓库"迁移会整丢，必须显式镜像（定级见 §F.8）。
+3. **记忆私有格式**：Claude memory frontmatter（`node_type`/`topic`/`originSessionId`/`audit_allow_numbers`）Kimi 无对应字段，转换有信息损耗（量化见 §F.9）；amazon-fba **自建记忆系统**格式已第二轮实勘（§A.3），非"未知"——其 SQLite/YAML 随仓直搬，需转换的是 Claude 专属的 frontmatter 记忆。
+4. **output-styles 无对应**：「拉姆」persona 若 Kimi 无 output-style 机制，需降级为系统提示，行为可能漂移（加深见 §F.10）。
+5. **plugin vs 本地 skills 混淆**：误把 plugin skills 当用户资产迁移 = 既冗余又可能版本冲突（补场景见 §F.13）。
+6. **座位适配层耦合**：loop-engine 座位脚本硬编码 `claude -p`/`codex`/`hermes` CLI，Kimi 主持需重写，否则圆桌跑不起来（连锁影响见 §F.12）。
+7. **本轮盘点盲区**：项目2/3 与 `~/.claude` 多数子目录本轮 exec 席未实测（§A.5），性质判定是初判，执行前必须先跑阶段 0 补全，否则可能基于错误前提迁移。
+
+### F.8–F.16 · hermes 第二轮复审补强（9 条）
+
+#### 🔴 F.8 · gitignored `.roundtable/` 丢失（原 §F.2 已提，此处定级）
+`.roundtable/` 下是全部圆桌会议历史（KB/minutes/sessions），424K 纯 markdown——是 loop-engine 的"项目记忆"等价物。不仅要从 agents 仓显式镜像（§C `00-raw/repos/agents/`、§D 步 1.2），还须确保 Kimi 侧可读（放进项目 AGENTS.md 引用，或归档到 migration 目录）。**丢失 = loop-engine 圆桌退化成新桌子，之前所有迭代决策尽失。** 严重度 🔴。
+
+#### 🔴 F.9 · frontmatter 私有 schema 信息损耗（原 §F.3 量化）
+Claude memory `.md` 的 frontmatter（`node_type`/`topic`/`originSessionId`/`audit_allow_numbers`/`metadata.*`）转 Kimi 形态时丢失：`originSessionId` 不可还原为 Kimi session（mtime/git 时序替代不够精确）；`node_type`（memory/project/feedback/reference）Kimi 无此分类；`audit_allow_numbers` 无对应；`topic` 聚类可能需手动重建。**损耗量化（hermes 复核）**：amazon-fba 48 + finance 5 + agents 5 + home 14 = **共 72 个 memory `.md`** 全部经历 frontmatter 转换，每个丢 4–5 个元数据字段。
+
+#### 🔴 F.10 · output-style 无对应 → 行为漂移（原 §F.4 加深）
+"拉姆" persona 不是一个"输出风格"文件，而是整套行为协议（怎么对待用户、怎么纠错、怎么回溯来源、怎么承认不懂），Claude **每次对话都加载**。Kimi 侧降级为 AGENTS.md 的一段人设——加载频率相同，但**优先级与覆盖深度不同**。风险不止"风格不一致"，而是核心行为约束（`预估≠事实`、`被质疑先回查来源`）可能被弱化。
+
+#### 🔴 F.11 · 不变式钩子无承接 → 记忆纪律失效（结构性最大风险）
+amazon-fba CLAUDE.md L1 规则 #8 +"退役/推翻同步清单"依赖多个 SessionStart 不变式钩子自动扫描：**不变式 F**（扫全仓找被推翻但未标 ⚠️SUPERSEDED 的旧表述，靠 `config/superseded_terms.yaml` 关键词）；**不变式 G/H**（扫 CLAUDE.md L2 与 MEMORY.md，禁止抄写易变事实、只许 `[[指针]]`）；**audit**（定期审计候选状态与 DB 一致性）。钩子迁不到 Kimi → amazon-fba 在无自动纪律检查下运行：退役逻辑复活、指针腐烂、事实散落。这是"完美承接"最大的结构性风险，非"加一段 AGENTS.md"可解。**替代建议**：Kimi `[[hooks]]` 里重建等价扫描脚本（机制见 §B.2-3），或迁移文档中明确降级为"人工定期审计清单"。⚠️ 接线/实际生效仍待 §D 阶段 0 `00-inventory.sh §4` 实测坐实（当前是读 CLAUDE.md 推断，非实测——hermes 第二轮 L92 警告）。
+
+#### 🔴 F.12 · 座位适配层硬编码 CLI（原 §F.6 评估连锁影响）
+不止座位脚本硬编码 `claude -p`/`kimi -p`：整个 conductor 编排逻辑（verdict 解析正则、退出码契约、dry-run 桩、超时重试）与具体 CLI 输出格式深度耦合。"换主持方 = 重写座位脚本"只是表面，深层是 `conductor.py` 这些契约可能全部需适配 Kimi CLI 行为。当前 `bin/seat-kimi.sh` 存在但**未经真跑验证**，与已跑通的 seat-claude/seat-codex/seat-hermes 不在同一成熟度。
+
+#### 🔴 F.13 · plugin skills 被误当本地资产（原 §F.5 补场景）
+`~/.claude/plugins/` 46M，满屏命名空间 skill（`superpowers:*`/`agent-skills:*`/`document-skills:*`/`codex:*`）全部不迁。system-reminder 中无命名空间的 skill 名需实证区分本地 vs 内置/plugin，不可凭名称反推。`~/.claude/skills/` 本地现已实勘为空（agent-reach 生态删除后，A1-3 SUPERSEDED 注）。**残余风险**：日后若往 `~/.claude/skills/` 新增本地 skill，迁移脚本须能区分新旧——MANIFEST 加时间戳快照是正解。
+
+#### 🟡 F.14 · 303M jsonl 迁移的时空成本（原文未涉及）
+303M jsonl（795 文件递归）：**磁盘预检**目标目录至少需 303M×2（镜像 + 过滤产物）；**读取耗时**795 个 jsonl 全量 `cat`/`jq` 解析，估 30–90 分钟（取决于是否并行）；**过滤复杂度**大部分是 subagent jsonl（嵌套 `subagents/`，价值密度低），不先做价值分级（主 session > subagent > workflow）会浪费算力；**Kimi 侧落点**过滤产物须转 `.md`（Kimi 不吃 jsonl），即便保留 10% 也是 30MB+ `.md`，塞进 AGENTS.md 会撑爆上下文 → 归档 `memory-archive/` 是对的，但需明确"必须加载"vs"备查"的量化阈值（§B.3 当前只有方向性描述，缺阈值）。
+
+#### 🟡 F.15 · 全局 AGENTS.md 层级叠加不确定
+全局 `~/.kimi-code/AGENTS.md` + 项目 `.kimi-code/AGENTS.md` + 仓库根 `AGENTS.md` 是否全部加载、优先级如何（state.md 开放问题 #3）？若全局覆盖项目级，项目特定行为可能被全局人设压住（如 amazon-fba "SQLite 单一真相源" 与全局通用规则冲突时谁胜出）。kimi 席应在 §B 实证此行为，**当前 §B 未做这项测试**——属开放问题。
+
+#### 🟡 F.16 · zzz-mac 幽灵项目
+`/Users/melee/Documents/zzz-mac/` 磁盘已不存在，但 Claude 仍持有 11M 会话历史（§A.0 / §A.5）。这个项目是什么、记忆是否需迁移均未知；完全忽略可能丢有价值上下文，也可能浪费 11M 带宽 → **至少在盘点中列出并标"源目录已删除，待用户决定保留/丢弃"**（已落 §A.0 与文首范围说明第 4 项）。
 
 ---
 
