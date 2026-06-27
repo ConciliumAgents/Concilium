@@ -265,6 +265,17 @@ def run(repo, task, commander="claude", reviewer="codex", max_iters=5, test_cmd=
     _, o = sh_capture("roundtable-init.sh", repo, task); reporter.log(o)
     # 写在座花名册（探测 ∩ 勾选），并跑护栏校验
     seated = write_roster(repo, seats, seat_models)
+    # 修复座位漂移：用实际在座覆盖 roundtable.json 的 participants。
+    # roundtable-init 写的是硬编码默认 ["claude","codex","hermes"]，会让后续轮的总指挥
+    # 误判谁在座（iter-2 曾据此把活派给已下桌、且连接故障的 codex，导致裁决失准）。
+    try:
+        _sf = session_dir(repo) / "roundtable.json"
+        if _sf.exists():
+            _d = json.loads(_sf.read_text())
+            _d["participants"] = seated
+            _sf.write_text(json.dumps(_d, ensure_ascii=False, indent=2))
+    except Exception:
+        pass
     if seated:
         reporter.log(f"[loop-engine] 在座: {', '.join(seated)}")
     for role, name in (("总指挥", commander), ("验证席", reviewer)):
