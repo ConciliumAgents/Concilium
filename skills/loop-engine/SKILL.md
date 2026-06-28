@@ -7,6 +7,8 @@ description: "Run an Addy-Osmani-style Loop Engineering round table from Claude 
 
 你（Claude）是这张圆桌的**主持人（指挥 plan + 验证 review）**。参考 Addy Osmani 的 Loop Engineering（Plan→Act→Verify→Iterate），通过共享黑板 `.roundtable/` 协调飞毛腿执行席 hermes（DeepSeek）、kimi（K2.7）与（可达时的）codex 验证席在各自原生壳里参与。原始设计 `docs/superpowers/specs/2026-06-24-loop-engine-design.md`；**提速（claude 退 exec）、降级容错、座位画像等演进见 `2026-06-27-roundtable-speedup-design.md`、`2026-06-28-roster-profiles-design.md`——分工以本文件 + `KB/roster.md` 实战画像为准。**
 
+补充文档：Agent MoA 的定位见 `docs/loop-engine/agent-moa-positioning.md`；座位输入/输出契约见 `docs/loop-engine/seat-contract.md`；离线验证与评测入口见 `bin/seat-contract-validate.py`、`bin/eval-roundtable.py`、`bin/report-session.py`。
+
 ## 两种用法
 - **主持模式（本文件）**：你在对话里逐步驱动 plan→act→verify，用 `bin/seat-*.sh` 调座位；会改坏东西的大块核心代码**由你在主对话里亲写**（握全上下文、无超时）。
 - **自动模式**：`bin/conductor.py --repo <repo> --task "<任务+验收标准>"` 一条命令全自动跑完整循环（总指挥 plan → 飞毛腿 exec → reviewer 验证 → 迭代到 PASS）。claude 退 headless exec、reviewer 自动解析、降级容错、按座位画像派活都在此模式（细节见上述 spec）。其他项目里走 CLI（见 `~/.claude/CLAUDE.md` 圆桌速查）。
