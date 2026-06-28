@@ -63,6 +63,22 @@ collect_num_sources() {
   python3 -c "${PY_NUM}" 2>/dev/null | grep -oE '^[0-9]+' | head -1 || echo 0
 }
 
+has_legacy_sources() {
+  # 旧源是可选的：worktree/临时 fixture 可能只有 git 化 roundtable-memory/，没有
+  # CLAUDE.md、Claude 项目记忆或过往会话结论。此时应验证新源，不应误判失败。
+  local mapped="${REPO//\//-}"
+  [ -f "${REPO}/CLAUDE.md" ] && return 0
+  if [ -d "${HOME}/.claude/projects/${mapped}/memory" ] \
+     && find "${HOME}/.claude/projects/${mapped}/memory" -maxdepth 1 -name '*.md' -print -quit | grep -q .; then
+    return 0
+  fi
+  if [ -d "${REPO}/.roundtable/sessions" ] \
+     && find "${REPO}/.roundtable/sessions" -path '*/KB/conclusion.md' -print -quit | grep -q .; then
+    return 0
+  fi
+  return 1
+}
+
 echo ""
 echo "=========================================="
 echo "  圆桌持久记忆 smoke test"
@@ -94,11 +110,13 @@ else
 fi
 echo ""
 
-# ---- (b) LOOP_USE_ROUNDTABLE_MEMORY=1 + 目录存在 → 三者都在 ----
+# ---- (b) LOOP_USE_ROUNDTABLE_MEMORY=1 + 目录存在 → 新源必在，旧源有则检查 ----
 echo "=== (b) LOOP_USE_ROUNDTABLE_MEMORY=1 + 目录存在 ==="
 if [ ! -d "${REPO}/roundtable-memory" ]; then
   _skip "roundtable-memory/ 不存在 — 先跑 Phase 1"
 else
+  LEGACY_EXPECTED=0
+  has_legacy_sources && LEGACY_EXPECTED=1
   OUT_RAW=$(LOOP_USE_ROUNDTABLE_MEMORY=1 collect_imported_raw 2>&1) || {
     _fail "import_memory() 开关1失败: ${OUT_RAW}"
   }
@@ -107,10 +125,14 @@ else
   if echo "$OUT_RAW" | grep -qE '通用铁律|通用教训'; then :; else echo "  ⚠ 缺少通用铁律"; ERR=1; fi
   # 检查成果索引（新源主源；分项目教训当前 agents 节为空属正常，不强检）
   if echo "$OUT_RAW" | grep -qE '圆桌成果索引'; then :; else echo "  ⚠ 缺少成果索引"; ERR=1; fi
-  # 检查旧源（CLAUDE.md 或 Claude 项目记忆或过往会话结论）
-  if echo "$OUT_RAW" | grep -qE 'CLAUDE\.md|Claude 项目记忆'; then :; else echo "  ⚠ 缺少旧源"; ERR=1; fi
+  # 检查旧源（CLAUDE.md 或 Claude 项目记忆或过往会话结论）；worktree/fixture 可正常无旧源。
+  if [ "$LEGACY_EXPECTED" -eq 1 ]; then
+    if echo "$OUT_RAW" | grep -qE 'CLAUDE\.md|Claude 项目记忆|过往会话结论'; then :; else echo "  ⚠ 缺少旧源"; ERR=1; fi
+  else
+    echo "  ⏭️  旧源不存在，跳过旧源检查（worktree/fixture 可正常无旧源）"
+  fi
   if [ "$ERR" -eq 0 ]; then
-    _pass "开关1+目录存在 → 通用铁律/分项目/旧源三者都在"
+    _pass "开关1+目录存在 → roundtable-memory 新源可导入，旧源检查按环境处理"
   else
     _fail "开关1+目录存在 → 缺内容"
   fi
