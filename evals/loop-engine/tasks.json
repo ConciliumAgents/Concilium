@@ -1,0 +1,30 @@
+[
+  {
+    "id": "doc_drift_lessons_archive",
+    "category": "docs-consistency",
+    "task": "Check whether roundtable-memory/LESSONS.md describes the current lesson archival behavior in conductor.py.",
+    "test_cmd": "python3 skills/loop-engine/tests/test_seat_contract_validate.py",
+    "expected_status": "PASS"
+  },
+  {
+    "id": "seat_contract_validator",
+    "category": "contract",
+    "task": "Validate that a review minute must contain exactly one VERDICT line and an exec minute must contain a lesson section.",
+    "test_cmd": "python3 skills/loop-engine/tests/test_seat_contract_validate.py",
+    "expected_status": "PASS"
+  },
+  {
+    "id": "speedup_smoke",
+    "category": "orchestration",
+    "task": "Run the offline roundtable speedup smoke test and confirm reviewer resolution, fallback, and lesson archival logic.",
+    "test_cmd": "bash skills/loop-engine/bin/smoke-roundtable-speedup.sh",
+    "expected_status": "PASS"
+  },
+  {
+    "id": "memory_smoke",
+    "category": "memory",
+    "task": "Run the roundtable memory smoke test and confirm memory import/archive behavior remains compatible.",
+    "test_cmd": "bash skills/loop-engine/bin/smoke-roundtable-memory.sh .",
+    "expected_status": "PASS"
+  }
+]
