@@ -40,6 +40,22 @@ class EvalRoundtableTests(unittest.TestCase):
         self.assertTrue(result["passed"])
         self.assertEqual(result["status"], "PASS")
 
+    def test_select_tasks_skips_optional_by_default(self):
+        tasks = [
+            {"id": "required", "task": "Required", "expected_status": "PASS"},
+            {"id": "optional", "task": "Optional", "expected_status": "PASS", "optional": True},
+        ]
+        self.assertEqual([task["id"] for task in eval_roundtable.select_tasks(tasks, False)], ["required"])
+        self.assertEqual(
+            [task["id"] for task in eval_roundtable.select_tasks(tasks, True)],
+            ["required", "optional"],
+        )
+
+    def test_doc_drift_eval_runs_doc_drift_test(self):
+        tasks = eval_roundtable.load_tasks(eval_roundtable.DEFAULT_TASKS)
+        task = next(item for item in tasks if item["id"] == "doc_drift_lessons_archive")
+        self.assertIn("test_lessons_archive_docs.py", task["test_cmd"])
+
 
 if __name__ == "__main__":
     unittest.main()

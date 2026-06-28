@@ -47,6 +47,11 @@ class SeatContractValidateTests(unittest.TestCase):
         self.assertTrue(validator.validate_review("VERDICT: PASS\nVERDICT: BLOCK\n"))
         self.assertTrue(validator.validate_review("no verdict"))
 
+    def test_review_blocks_high_or_critical_findings(self):
+        self.assertTrue(validator.validate_review("[HIGH] bad\nVERDICT: PASS\n"))
+        self.assertEqual(validator.validate_review("[HIGH] bad\nVERDICT: BLOCK\n"), [])
+        self.assertEqual(validator.validate_review("[MEDIUM] note\nVERDICT: PASS\n"), [])
+
     def test_infers_mode_from_minute_filename(self):
         with tempfile.TemporaryDirectory() as td:
             path = pathlib.Path(td) / "iter-1-kimi-review.md"

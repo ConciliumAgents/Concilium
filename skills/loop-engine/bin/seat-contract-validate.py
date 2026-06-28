@@ -11,6 +11,7 @@ from pathlib import Path
 
 AGENTS = {"claude", "codex", "hermes", "kimi"}
 VERDICT_RE = re.compile(r"^\s*VERDICT:\s*(PASS|BLOCK)\s*$", re.M)
+BLOCKING_SEVERITY_RE = re.compile(r"\[(CRITICAL|HIGH)\]", re.I)
 
 
 def extract_h2_section(text: str, header: str) -> str:
@@ -73,6 +74,8 @@ def validate_review(text: str) -> list[str]:
     verdicts = VERDICT_RE.findall(text)
     if len(verdicts) != 1:
         errors.append("review output must contain exactly one VERDICT line")
+    elif verdicts[0] == "PASS" and BLOCKING_SEVERITY_RE.search(text):
+        errors.append("review output with HIGH or CRITICAL findings must use VERDICT: BLOCK")
     return errors
 
 

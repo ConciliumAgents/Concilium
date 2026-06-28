@@ -34,6 +34,12 @@ def load_tasks(path: Path) -> list[dict]:
     return data
 
 
+def select_tasks(tasks: list[dict], include_optional: bool) -> list[dict]:
+    if include_optional:
+        return tasks
+    return [task for task in tasks if not task.get("optional")]
+
+
 def run_cmd(cmd: str, timeout: int) -> tuple[int, str]:
     proc = subprocess.run(
         cmd,
@@ -74,9 +80,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Run Loop Engine eval tasks.")
     parser.add_argument("--tasks", default=str(DEFAULT_TASKS))
     parser.add_argument("--timeout", type=int, default=120)
+    parser.add_argument("--include-optional", action="store_true", help="Also run optional environment-sensitive evals.")
     args = parser.parse_args()
 
-    tasks = load_tasks(Path(args.tasks))
+    tasks = select_tasks(load_tasks(Path(args.tasks)), args.include_optional)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     out_path = OUT_DIR / f"{stamp}.jsonl"

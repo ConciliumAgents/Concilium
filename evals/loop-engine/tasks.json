@@ -3,7 +3,7 @@
     "id": "doc_drift_lessons_archive",
     "category": "docs-consistency",
     "task": "Check whether roundtable-memory/LESSONS.md describes the current lesson archival behavior in conductor.py.",
-    "test_cmd": "python3 skills/loop-engine/tests/test_seat_contract_validate.py",
+    "test_cmd": "python3 skills/loop-engine/tests/test_lessons_archive_docs.py",
     "expected_status": "PASS"
   },
   {
@@ -25,6 +25,7 @@
     "category": "memory",
     "task": "Run the roundtable memory smoke test and confirm memory import/archive behavior remains compatible.",
     "test_cmd": "bash skills/loop-engine/bin/smoke-roundtable-memory.sh .",
-    "expected_status": "PASS"
+    "expected_status": "PASS",
+    "optional": true
   }
 ]
