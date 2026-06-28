@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 
 
-VERDICT_RE = re.compile(r"^\s*VERDICT:\s*(PASS|BLOCK)\s*$", re.M)
+VERDICT_RE = re.compile(r"^\s*(?:\*\*)?VERDICT:\s*(PASS|BLOCK)(?:\*\*)?\s*$", re.M)
 
 
 def read(path: Path) -> str:

@@ -44,12 +44,14 @@ class SeatContractValidateTests(unittest.TestCase):
 
     def test_review_requires_exactly_one_verdict(self):
         self.assertEqual(validator.validate_review("Looks fine\nVERDICT: PASS\n"), [])
+        self.assertEqual(validator.validate_review("Looks fine\n**VERDICT: PASS**\n"), [])
         self.assertTrue(validator.validate_review("VERDICT: PASS\nVERDICT: BLOCK\n"))
         self.assertTrue(validator.validate_review("no verdict"))
 
     def test_review_blocks_high_or_critical_findings(self):
         self.assertTrue(validator.validate_review("[HIGH] bad\nVERDICT: PASS\n"))
         self.assertEqual(validator.validate_review("[HIGH] bad\nVERDICT: BLOCK\n"), [])
+        self.assertEqual(validator.validate_review("[HIGH] bad\n**VERDICT: BLOCK**\n"), [])
         self.assertEqual(validator.validate_review("[MEDIUM] note\nVERDICT: PASS\n"), [])
 
     def test_infers_mode_from_minute_filename(self):

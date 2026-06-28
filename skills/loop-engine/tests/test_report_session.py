@@ -31,7 +31,7 @@ class ReportSessionTests(unittest.TestCase):
             (kb / "conclusion.md").write_text("Final conclusion", encoding="utf-8")
             (kb / "task.md").write_text("Task body", encoding="utf-8")
             (kb / "test-results.txt").write_text("Tests passed", encoding="utf-8")
-            (minutes / "iter-1-kimi-review.md").write_text("Looks fine\nVERDICT: PASS\n", encoding="utf-8")
+            (minutes / "iter-1-kimi-review.md").write_text("Looks fine\n**VERDICT: PASS**\n", encoding="utf-8")
 
             report = report_session.build_report(session)
 

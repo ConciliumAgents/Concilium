@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 AGENTS = {"claude", "codex", "hermes", "kimi"}
-VERDICT_RE = re.compile(r"^\s*VERDICT:\s*(PASS|BLOCK)\s*$", re.M)
+VERDICT_RE = re.compile(r"^\s*(?:\*\*)?VERDICT:\s*(PASS|BLOCK)(?:\*\*)?\s*$", re.M)
 BLOCKING_SEVERITY_RE = re.compile(r"\[(CRITICAL|HIGH)\]", re.I)
 
 
