@@ -126,6 +126,15 @@ assert t2.count("本轮异常")==2 and "核心活" in t2, "追加未保留旧内
 print("  state.md 含失败座位+被移出子任务+兜底措辞；二次写为追加不覆盖")
 PY
 
+# ---- T7: seat contract validator unit tests ----
+echo ""; echo "=== T7: seat contract validator unit tests ==="
+if python3 "$SCRIPT_DIR/../tests/test_seat_contract_validate.py" >/tmp/loop-seat-contract-test.out 2>&1; then
+  _ok "T7 seat contract validator tests pass"
+else
+  cat /tmp/loop-seat-contract-test.out
+  _no "T7 seat contract validator tests fail"
+fi
+
 echo ""
 echo "=========================================="
 echo "  汇总: ${PASS} 通过, ${FAIL} 失败"
