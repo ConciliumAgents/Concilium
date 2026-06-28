@@ -60,7 +60,7 @@ kept = [p for p in plan if p["agent"] in executors]
 dropped = [p for p in plan if p["agent"] not in executors]   # 派给 claude/codex/reviewer 的
 plan = kept or _fallback_plan(executors, task, reason="filtered_empty")
 ```
-- 每个 dropped 项 `reporter.log(...)` + **写入 `KB/state.md` 的 `## ⚠ 本轮被移出的子任务` 节 + 注入 review BRIEF**，让验证席知悉"这些活没人干"，据完整性裁决——**不静默丢弃**(修 v3-HIGH)。
+- 每个 dropped 项 `reporter.log(...)` + **写入 `KB/state.md` 的统一节 `## ⚠ 本轮异常（conductor 记录）`（子条目区分被移出子任务/失败座位/plan 异常，避免多节重复 header）+ 注入 review BRIEF**，让验证席知悉"这些活没人干"，据完整性裁决——**不静默丢弃**(修 v3-HIGH)。
 
 **A3. 退化兜底 `_fallback_plan(executors, task, reason)`（区分原因）**：
 - `executors` 非空 → 整个 task 派 `FAST_PRIORITY=["kimi","hermes"]` 中首个落在 executors 的座位。
@@ -80,7 +80,7 @@ plan = kept or _fallback_plan(executors, task, reason="filtered_empty")
 
 `run_seat` 已"从不抛异常、返回码区分"(超时 124/失败 1)+进程组强杀；串行 exec 循环本就无 `break`。本版确立契约 + 补可见性：
 
-- **B5. 失败写 `KB/state.md`**：exec loop 内、review 之前；**追加**到固定节 `## ⚠ 本轮座位失败`(座位自身也写 state.md，conductor 只追加；多座位失败 loop 内收集后一次写入)。格式 `⏱ kimi[exec] 超时 600s` / `✗ hermes[exec] rc=1`。
+- **B5. 失败写 `KB/state.md`**：exec loop 内、review 之前；**追加**到统一节 `## ⚠ 本轮异常（conductor 记录）`(与 A2/plan 异常同节、子条目区分，避免多节重复 header；座位自身也写 state.md，conductor 只追加不覆盖；多座位失败 loop 内收集后一次写入)。格式 `✗ kimi[exec] 失败（超时 124）`。
 - **B6. 统一构建 review BRIEF**：新增 `build_brief(failures, dropped, plan_failed)` 显式构建器，汇总「失败座位 + 被移出子任务 + 完整性裁决前缀」，**注入 review**(`run_seat(reviewer,"review",repo,brief=...)`；当前行 575 未传)。约定：BRIEF 有上限、与上一轮 `feedback`(行 587)分节拼接防膨胀、空则不传。
 - **B7. 完整性裁决规则落到 seat review prompt**(不只 BRIEF，修 v3-HIGH)：在 `seat-claude.sh` / `seat-kimi.sh` / `seat-hermes.sh` 的 **review 段 prompt** 加一句固定指令："若 BRIEF 标明有座位失败/子任务未执行，请据**任务完整性是否受损**裁决；某座位失败但任务已由其余座位完成时不应机械 BLOCK。"
 - **B8. plan 阶段失败并入 A3**(`reason="plan_failed"`)：plan seat 失败/超时 → 走 A3 兜底 + 写 state.md + 注入 BRIEF。

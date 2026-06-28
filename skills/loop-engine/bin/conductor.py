@@ -18,7 +18,8 @@ BIN = Path(__file__).resolve().parent
 AGENTS = {"claude", "codex", "hermes", "kimi"}
 # 慢/不宜执行的座位：claude=Opus 易超时；codex=慢且连接坏。这些座位只指挥/验证、不进 exec。
 EXEC_EXCLUDE = {"claude", "codex"}
-# 飞毛腿执行优先级（当前 hermes=deepseek、kimi=K2.7 均快）。fallback / 异质 reviewer 选座依此。
+# 飞毛腿执行兜底优先级（kimi=K2.7 强编码优先执行）。注意：reviewer 选座优先级另在
+# _resolve_reviewer 内单独定（异质 hermes=deepseek 优先复审），与此处执行优先级有意不同。
 FAST_PRIORITY = ["kimi", "hermes"]
 VERDICT_MAP = {0: "PASS", 2: "BLOCK", 1: "ERR"}
 
@@ -107,7 +108,7 @@ def run_seat(agent: str, mode: str, repo: str, brief: str = "", extra: list[str]
 
 def _dry_seat(agent: str, mode: str, brief: str) -> tuple[int, str]:
     if mode == "plan":
-        plan = [{"agent": "claude", "subtask": "实施核心改动"},
+        plan = [{"agent": "kimi", "subtask": "实施核心改动"},
                 {"agent": "hermes", "subtask": "环境排雷"}]
         return 0, f"[dry] 派活\n```json\n{json.dumps(plan, ensure_ascii=False)}\n```"
     if mode == "review":
@@ -520,20 +521,32 @@ def _resolve_reviewer(seated: list, requested: str) -> str:
     return fast[0] if fast else (seated[0] if seated else "")
 
 
-def _fallback_plan(executors: list, task: str, reason: str = "filtered_empty") -> list:
-    """过滤后无可执行子任务时的兜底：整活派首个飞毛腿。executors 必非空（空则调用方已 fail-fast）。"""
+def _fallback_plan(executors: list, task: str) -> list:
+    """过滤后无可执行子任务时的兜底：整活派首个飞毛腿。executors 必非空（空则调用方已 fail-fast）。
+    差异化诊断（filtered_empty vs plan_failed）由调用方据 plan_failed/is_fallback 在 log/BRIEF 体现。"""
     target = next((a for a in FAST_PRIORITY if a in executors), executors[0])
     return [{"agent": target, "subtask": task}]
 
 
-def build_brief(dropped: list, exec_failures: list, plan_failed: bool) -> str:
-    """汇总本轮异常给验证席：完整性裁决前缀 + 被移出子任务 + 失败座位。无异常返回空串。"""
-    if not (dropped or exec_failures or plan_failed):
+def _plan_note(plan_failed: bool, is_fallback: bool) -> str:
+    """plan 异常的准确措辞：区分「真兜底（kept 空）」与「plan 进程报错但仍采用其计划」。"""
+    if is_fallback:
+        why = "总指挥 plan 失败/超时" if plan_failed else "过滤后无现成可执行子任务"
+        return f"{why}，本轮整活兜底派单个飞毛腿"
+    if plan_failed:
+        return "总指挥 plan 进程异常退出（rc≠0）但已采用其解析出的计划，可能不全"
+    return ""
+
+
+def build_brief(dropped: list, exec_failures: list, plan_failed: bool, is_fallback: bool = False) -> str:
+    """汇总本轮异常给验证席：完整性裁决前缀 + plan 异常 + 被移出子任务 + 失败座位。无异常返回空串。"""
+    if not (dropped or exec_failures or plan_failed or is_fallback):
         return ""
     lines = ["【本轮执行情况：请据「任务完整性是否受损」裁决；若任务已由其余座位完成，"
              "勿因下列失败机械判 BLOCK】"]
-    if plan_failed:
-        lines.append("- ⚠ 总指挥 plan 失败/超时，本轮计划为兜底硬塞")
+    note = _plan_note(plan_failed, is_fallback)
+    if note:
+        lines.append(f"- ⚠ {note}")
     for a, rc in exec_failures:
         tag = "超时" if rc == 124 else f"rc={rc}"
         lines.append(f"- ✗ {a}[exec] 失败（{tag}）")
@@ -542,16 +555,18 @@ def build_brief(dropped: list, exec_failures: list, plan_failed: bool) -> str:
     return "\n".join(lines)
 
 
-def _write_round_notes(repo: str, dropped: list, exec_failures: list, plan_failed: bool) -> None:
+def _write_round_notes(repo: str, dropped: list, exec_failures: list,
+                       plan_failed: bool, is_fallback: bool = False) -> None:
     """本轮异常追加进 KB/state.md（验证席必读），review 前写入，不覆盖座位自写内容。失败不抛。"""
-    if not (dropped or exec_failures or plan_failed):
+    if not (dropped or exec_failures or plan_failed or is_fallback):
         return
     try:
         sp = session_dir(repo) / "KB" / "state.md"
         sp.parent.mkdir(parents=True, exist_ok=True)
         out = ["", "## ⚠ 本轮异常（conductor 记录）"]
-        if plan_failed:
-            out.append("- 总指挥 plan 失败/超时，计划为兜底")
+        note = _plan_note(plan_failed, is_fallback)
+        if note:
+            out.append(f"- {note}")
         for a, rc in exec_failures:
             out.append(f"- ✗ {a}[exec] 失败（{'超时 124' if rc == 124 else f'rc={rc}'}）")
         for p in dropped:
@@ -632,7 +647,13 @@ def run(repo, task, commander="claude", reviewer="", max_iters=5, test_cmd="",
         dropped = [p for p in raw if p["agent"] not in executors]   # 派给 claude/codex/验证席的
         for p in dropped:
             reporter.log(f"[conductor] 移出非执行座位子任务：{p['agent']} ← {p['subtask'][:30]}")
-        plan = kept or _fallback_plan(executors, task, "plan_failed" if plan_failed else "filtered_empty")
+        is_fallback = not kept
+        if is_fallback:
+            plan = _fallback_plan(executors, task)
+            why = "plan 失败/超时" if plan_failed else "过滤后无可执行子任务"
+            reporter.log(f"[conductor] {why}，整活兜底派飞毛腿 {plan[0]['agent']}")
+        else:
+            plan = kept
         reporter.plan(plan)
 
         # 分派执行（串行；验证留到统一一步）。单座位失败/超时不阻断后续（run_seat 不抛、返回码区分）。
@@ -648,12 +669,12 @@ def run(repo, task, commander="claude", reviewer="", max_iters=5, test_cmd="",
                 exec_failures.append((p["agent"], erc))
 
         # 本轮异常写黑板（review 前）；并构建注入验证席的 BRIEF（双通道：state.md + brief）
-        _write_round_notes(repo, dropped, exec_failures, plan_failed)
+        _write_round_notes(repo, dropped, exec_failures, plan_failed, is_fallback)
         _, o = sh_capture("kb-refresh.sh", repo, test_cmd); reporter.log(o)
 
         # 验证
         rp, rm = sm(reviewer)
-        rbrief = build_brief(dropped, exec_failures, plan_failed)
+        rbrief = build_brief(dropped, exec_failures, plan_failed, is_fallback)
         reporter.seat(reviewer, "review", "独立验证", phase="start")
         vrc, vout = run_seat(reviewer, "review", repo, brief=rbrief, provider=rp, model=rm)
         verdict = VERDICT_MAP.get(vrc, "ERR")

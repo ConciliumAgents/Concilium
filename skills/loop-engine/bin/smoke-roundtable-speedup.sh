@@ -35,9 +35,15 @@ eq("claude被排除", "claude" in ex(["claude","hermes","kimi"],"hermes"), False
 eq("codex被排除", "codex" in ex(["claude","codex","hermes","kimi"],"hermes"), False)
 # fallback
 eq("fallback优先kimi", c._fallback_plan(["kimi","hermes"],"T")[0]["agent"], "kimi")
-# brief
-eq("无异常空串", c.build_brief([],[],False), "")
-b=c.build_brief([{"agent":"claude","subtask":"x"}],[("kimi",124)],True)
+# brief（含 plan_failed/is_fallback 措辞区分）
+eq("无异常空串", c.build_brief([],[],False,False), "")
+eq("仅is_fallback也触发", c.build_brief([],[],False,True)!="", True)
+b_fb=c.build_brief([],[],True,True)     # 真兜底（kept 空）
+b_kept=c.build_brief([],[],True,False)  # plan 报错但采用了部分计划
+eq("真兜底措辞含兜底", "兜底" in b_fb, True)
+eq("plan报错措辞含采用", "采用" in b_kept, True)
+eq("两种措辞不同", b_fb!=b_kept, True)
+b=c.build_brief([{"agent":"claude","subtask":"x"}],[("kimi",124)],True,True)
 eq("brief含完整性前缀", "任务完整性" in b, True)
 eq("brief含超时", "超时" in b, True)
 eq("brief含未执行子任务", "未执行" in b, True)
@@ -100,6 +106,25 @@ if grep -qE '"--reviewer", default="", ' "$SCRIPT_DIR/conductor.py"; then
 else
   _no "T5 默认 reviewer 仍是 codex"
 fi
+
+# ---- T6: _write_round_notes 真写 state.md（降级双通道之一） ----
+echo ""; echo "=== T6: _write_round_notes 真写 state.md ==="
+python3 - "$SCRIPT_DIR" <<'PY' && _ok "T6 state.md 真写出且内容完整" || _no "T6 state.md 写入有问题"
+import sys, os, tempfile, pathlib; sys.path.insert(0, sys.argv[1])
+import conductor as c
+tmp=pathlib.Path(tempfile.mkdtemp()); os.environ["LOOP_SESSION"]="smoketest-notes"
+c._write_round_notes(str(tmp), [{"agent":"claude","subtask":"核心活"}], [("kimi",124)], True, True)
+sp=tmp/".roundtable"/"sessions"/"smoketest-notes"/"KB"/"state.md"
+assert sp.exists(), "state.md 没写出"
+t=sp.read_text(encoding="utf-8")
+for needle in ("本轮异常","kimi","核心活","兜底"):
+    assert needle in t, f"state.md 缺 {needle}"
+# 追加而非覆盖：再写一次应保留前一节
+c._write_round_notes(str(tmp), [], [("hermes",1)], False, False)
+t2=sp.read_text(encoding="utf-8")
+assert t2.count("本轮异常")==2 and "核心活" in t2, "追加未保留旧内容（疑似覆盖）"
+print("  state.md 含失败座位+被移出子任务+兜底措辞；二次写为追加不覆盖")
+PY
 
 echo ""
 echo "=========================================="
