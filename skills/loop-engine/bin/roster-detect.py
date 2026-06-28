@@ -39,7 +39,7 @@ def detect_claude():
 def detect_codex():
     path = shutil.which("codex")
     d = {"seat": "codex", "available": bool(path), "path": path or "",
-         "modes": ["exec", "review"], "provider": "openai", "models": []}
+         "modes": ["review"], "provider": "openai", "models": []}   # 只验证不执行（慢/连接不稳，与 EXEC_EXCLUDE 一致）
     if not path:
         return d
     d["version"] = (_run([path, "--version"], 8).strip().splitlines() or [""])[0]
@@ -65,7 +65,7 @@ def detect_codex():
         except Exception:
             pass
     d["models"] = [{"provider": "openai", "model": m, "default": (m == model)} for m in opts[:6]]
-    d["strength"] = "代码验证/挑致命缺陷（codex exec review）、强编码"
+    d["strength"] = "代码验证/挑致命缺陷（只验证、不执行——慢且连接不稳）"
     return d
 
 

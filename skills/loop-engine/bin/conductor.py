@@ -16,6 +16,10 @@ from pathlib import Path
 
 BIN = Path(__file__).resolve().parent
 AGENTS = {"claude", "codex", "hermes", "kimi"}
+# 慢/不宜执行的座位：claude=Opus 易超时；codex=慢且连接坏。这些座位只指挥/验证、不进 exec。
+EXEC_EXCLUDE = {"claude", "codex"}
+# 飞毛腿执行优先级（当前 hermes=deepseek、kimi=K2.7 均快）。fallback / 异质 reviewer 选座依此。
+FAST_PRIORITY = ["kimi", "hermes"]
 VERDICT_MAP = {0: "PASS", 2: "BLOCK", 1: "ERR"}
 
 
@@ -317,7 +321,7 @@ def write_conclusion(repo: str, task: str, status: str, rounds: int, verdicts: l
 def archive_to_memory(repo: str, task: str, status: str, rounds: int, verdicts: list) -> None:
     """记忆桥（出）：散会归档到 git 化的 roundtable-memory/。
       - status==PASS：成果落 <project>/<topic>.md 叶子 + 更新 INDEX.md（档案馆只收定稿）
-      - 任何成败：抽综合席纪要 minutes/iter-*-claude-exec.md 的 `## 教训` 节 → LESSONS.md
+      - 任何成败：抽各执行席纪要 minutes/iter-*-*-exec.md 的 `## 教训` 节 → LESSONS.md
     纯标准库、指挥进程内执行、不调任何座位 → 天然 agent 无关。受 LOOP_ARCHIVE 控制（默认 '1'）。失败不抛。"""
     if os.environ.get("LOOP_ARCHIVE", "1") != "1":
         return
@@ -404,13 +408,13 @@ def _update_index(root: Path, project: str, topic: str, task: str, date: str, st
 
 
 def _archive_lessons(root: Path, project: str, sd: Path) -> None:
-    """抽综合席纪要的 `## 教训` 节（### 通用 / ### <项目>）→ LESSONS.md 对应区，SHA-256 去重。"""
+    """抽各执行席纪要（iter-*-*-exec.md）的 `## 教训` 节（### 通用 / ### <项目>）→ LESSONS.md 对应区，SHA-256 去重。"""
     lessons_path = root / "LESSONS.md"
     mdir = sd / "minutes"
     if not lessons_path.exists() or not mdir.is_dir():
         return
     general_new, proj_new = [], []
-    for m in sorted(mdir.glob("iter-*-claude-exec.md")):
+    for m in sorted(mdir.glob("iter-*-*-exec.md")):
         try:
             sec = _extract_section(m.read_text(encoding="utf-8", errors="replace"), "## 教训")
         except OSError:
@@ -498,8 +502,68 @@ def extract_plan(text: str) -> list[dict]:
     return out
 
 
+def _resolve_reviewer(seated: list, requested: str) -> str:
+    """解析验证席：用户显式指定且在座 → 用之；否则动态选。
+    在座飞毛腿(seated ∩ ¬EXEC_EXCLUDE) ≥2 → 选异质飞毛腿(优先 hermes)当 reviewer，其余执行；
+    ≤1 个飞毛腿 → 把飞毛腿留给执行，claude 兜底当 reviewer(纯脑只读，仍 maker≠checker)；
+    都没有 → 返回任意在座(调用方据空 executors fail-fast)。"""
+    if requested and requested in seated:
+        return requested
+    fast = [a for a in seated if a not in EXEC_EXCLUDE]
+    if len(fast) >= 2:
+        for cand in ("hermes", "kimi"):   # 异质优先：hermes=deepseek 血统利于复审
+            if cand in fast:
+                return cand
+        return fast[0]
+    if "claude" in seated:                 # 飞毛腿 ≤1：留给执行，claude 兜底验证
+        return "claude"
+    return fast[0] if fast else (seated[0] if seated else "")
+
+
+def _fallback_plan(executors: list, task: str, reason: str = "filtered_empty") -> list:
+    """过滤后无可执行子任务时的兜底：整活派首个飞毛腿。executors 必非空（空则调用方已 fail-fast）。"""
+    target = next((a for a in FAST_PRIORITY if a in executors), executors[0])
+    return [{"agent": target, "subtask": task}]
+
+
+def build_brief(dropped: list, exec_failures: list, plan_failed: bool) -> str:
+    """汇总本轮异常给验证席：完整性裁决前缀 + 被移出子任务 + 失败座位。无异常返回空串。"""
+    if not (dropped or exec_failures or plan_failed):
+        return ""
+    lines = ["【本轮执行情况：请据「任务完整性是否受损」裁决；若任务已由其余座位完成，"
+             "勿因下列失败机械判 BLOCK】"]
+    if plan_failed:
+        lines.append("- ⚠ 总指挥 plan 失败/超时，本轮计划为兜底硬塞")
+    for a, rc in exec_failures:
+        tag = "超时" if rc == 124 else f"rc={rc}"
+        lines.append(f"- ✗ {a}[exec] 失败（{tag}）")
+    for p in dropped:
+        lines.append(f"- ⚠ 子任务未执行（派给了非执行座位 {p['agent']}）：{p['subtask'][:50]}")
+    return "\n".join(lines)
+
+
+def _write_round_notes(repo: str, dropped: list, exec_failures: list, plan_failed: bool) -> None:
+    """本轮异常追加进 KB/state.md（验证席必读），review 前写入，不覆盖座位自写内容。失败不抛。"""
+    if not (dropped or exec_failures or plan_failed):
+        return
+    try:
+        sp = session_dir(repo) / "KB" / "state.md"
+        sp.parent.mkdir(parents=True, exist_ok=True)
+        out = ["", "## ⚠ 本轮异常（conductor 记录）"]
+        if plan_failed:
+            out.append("- 总指挥 plan 失败/超时，计划为兜底")
+        for a, rc in exec_failures:
+            out.append(f"- ✗ {a}[exec] 失败（{'超时 124' if rc == 124 else f'rc={rc}'}）")
+        for p in dropped:
+            out.append(f"- ⚠ 子任务被移出未执行（非执行座位 {p['agent']}）：{p['subtask'][:60]}")
+        with sp.open("a", encoding="utf-8") as f:
+            f.write("\n".join(out) + "\n")
+    except OSError:
+        pass
+
+
 # ---------------- 主循环（渲染无关）----------------
-def run(repo, task, commander="claude", reviewer="codex", max_iters=5, test_cmd="",
+def run(repo, task, commander="claude", reviewer="", max_iters=5, test_cmd="",
         reporter=None, seats=None, seat_models=None) -> int:
     reporter = reporter or TextReporter()
     repo = str(Path(repo).expanduser().resolve())
@@ -513,11 +577,13 @@ def run(repo, task, commander="claude", reviewer="codex", max_iters=5, test_cmd=
     if not os.environ.get("LOOP_SESSION"):
         os.environ["LOOP_SESSION"] = datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + _slug(task)
     reporter.log(f"[conductor] 会话: {os.environ['LOOP_SESSION']}")
-    reporter.start(repo, task, commander, reviewer, max_iters)
-
     _, o = sh_capture("roundtable-init.sh", repo, task); reporter.log(o)
     # 写在座花名册（探测 ∩ 勾选），并跑护栏校验
     seated = write_roster(repo, seats, seat_models)
+    # 验证席动态解析（留空=异质飞毛腿优先、claude 兜底）；可执行座位 = 在座 ∩ 非慢座位 ∩ 非验证席。
+    reviewer = _resolve_reviewer(seated, reviewer)
+    executors = [a for a in seated if a not in EXEC_EXCLUDE and a != reviewer]
+    reporter.start(repo, task, commander, reviewer, max_iters)
     # 修复座位漂移：用实际在座覆盖 roundtable.json 的 participants。
     # roundtable-init 写的是硬编码默认 ["claude","codex","hermes"]，会让后续轮的总指挥
     # 误判谁在座（iter-2 曾据此把活派给已下桌、且连接故障的 codex，导致裁决失准）。
@@ -530,14 +596,21 @@ def run(repo, task, commander="claude", reviewer="codex", max_iters=5, test_cmd=
     except Exception:
         pass
     if seated:
-        reporter.log(f"[loop-engine] 在座: {', '.join(seated)}")
-    for role, name in (("总指挥", commander), ("验证席", reviewer)):
-        if name not in seated:
-            reporter.log(f"[loop-engine] ⚠ {role} '{name}' 不在座（未勾选/未安装），可能失败")
-    if commander == reviewer:
-        reporter.log("[loop-engine] ⚠ 总指挥=验证席：违反 maker≠checker，验证不独立")
-    if len(seated) < 2:
-        reporter.log("[loop-engine] ⚠ 在座少于 2 个：无独立验证，可信度下降")
+        reporter.log(f"[loop-engine] 在座: {', '.join(seated)}；验证席: {reviewer or '（无）'}；"
+                     f"执行池: {', '.join(executors) or '（空）'}")
+    if commander not in seated:
+        reporter.log(f"[loop-engine] ⚠ 总指挥 '{commander}' 不在座（未勾选/未安装），可能失败")
+    # maker≠checker：仅当验证席本身会执行（∉EXEC_EXCLUDE）且 == 总指挥时才不独立；
+    # claude 既指挥又验证但不 exec → maker(飞毛腿)独立，不告警。
+    if commander == reviewer and reviewer not in EXEC_EXCLUDE:
+        reporter.log("[loop-engine] ⚠ 总指挥=验证席且其会执行：验证不独立")
+    # 空执行池 fail-fast：无飞毛腿可执行 → 不进迭代空烧，直接交还人工。
+    if not executors:
+        reporter.log("[loop-engine] ⚠ 无飞毛腿可执行（在座飞毛腿不可用或被占为验证席）；"
+                     "圆桌需≥1 飞毛腿，纯 claude 请走主对话带外亲写")
+        write_conclusion(repo, task, "CAP", 0, [])
+        reporter.finish("CAP", 0)
+        return 2
     nimp = import_memory(repo)
     if nimp:
         reporter.log(f"[loop-engine] 记忆桥：导入 {nimp} 份仓库外项目记忆到黑板")
@@ -553,26 +626,36 @@ def run(repo, task, commander="claude", reviewer="codex", max_iters=5, test_cmd=
         rc, out = run_seat(commander, "plan", repo, brief=feedback, provider=cp, model=cm)
         reporter.seat(commander, "plan", "", rc, phase="done")
         reporter.transcript(commander, "plan", out)
-        plan = extract_plan(out)
-        plan = [p for p in plan if p["agent"] in seated] or [{"agent": commander, "subtask": task}]
+        plan_failed = (rc != 0)
+        raw = [p for p in extract_plan(out) if p["agent"] in seated]
+        kept = [p for p in raw if p["agent"] in executors]
+        dropped = [p for p in raw if p["agent"] not in executors]   # 派给 claude/codex/验证席的
+        for p in dropped:
+            reporter.log(f"[conductor] 移出非执行座位子任务：{p['agent']} ← {p['subtask'][:30]}")
+        plan = kept or _fallback_plan(executors, task, "plan_failed" if plan_failed else "filtered_empty")
         reporter.plan(plan)
 
-        # 分派执行（验证留到统一一步）
+        # 分派执行（串行；验证留到统一一步）。单座位失败/超时不阻断后续（run_seat 不抛、返回码区分）。
+        # plan 已只含 executors（过滤+fallback 保证），故不会派到验证席/慢座位。
+        exec_failures = []
         for p in plan:
-            if p["agent"] == reviewer and "验证" in p["subtask"]:
-                continue
             ep, em = sm(p["agent"])
             reporter.seat(p["agent"], "exec", p["subtask"], phase="start")
             erc, eout = run_seat(p["agent"], "exec", repo, brief=p["subtask"], provider=ep, model=em)
             reporter.seat(p["agent"], "exec", p["subtask"], erc, phase="done")
             reporter.transcript(p["agent"], "exec", eout)
+            if erc != 0:
+                exec_failures.append((p["agent"], erc))
 
+        # 本轮异常写黑板（review 前）；并构建注入验证席的 BRIEF（双通道：state.md + brief）
+        _write_round_notes(repo, dropped, exec_failures, plan_failed)
         _, o = sh_capture("kb-refresh.sh", repo, test_cmd); reporter.log(o)
 
         # 验证
         rp, rm = sm(reviewer)
+        rbrief = build_brief(dropped, exec_failures, plan_failed)
         reporter.seat(reviewer, "review", "独立验证", phase="start")
-        vrc, vout = run_seat(reviewer, "review", repo, provider=rp, model=rm)
+        vrc, vout = run_seat(reviewer, "review", repo, brief=rbrief, provider=rp, model=rm)
         verdict = VERDICT_MAP.get(vrc, "ERR")
         reporter.seat(reviewer, "review", "", vrc, phase="done")
         reporter.transcript(reviewer, "review", vout)
@@ -598,7 +681,8 @@ def build_argparser() -> argparse.ArgumentParser:
     ap.add_argument("--repo", required=True)
     ap.add_argument("--task", required=True)
     ap.add_argument("--commander", default="claude", choices=sorted(AGENTS), help="项目总指挥（你指派）")
-    ap.add_argument("--reviewer", default="codex", choices=sorted(AGENTS), help="验证席")
+    ap.add_argument("--reviewer", default="", choices=sorted(AGENTS) + [""],
+                    help="验证席（留空=自动解析：异质飞毛腿优先，claude 兜底）")
     ap.add_argument("--max-iters", type=int, default=int(os.environ.get("LOOP_MAX_ITERS", "5")))
     ap.add_argument("--test-cmd", default=os.environ.get("LOOP_TEST_CMD", ""))
     ap.add_argument("--seats", default="", help="只让这些座位上桌，逗号分隔（默认全部可用）")

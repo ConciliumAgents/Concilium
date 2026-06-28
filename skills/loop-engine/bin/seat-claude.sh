@@ -38,15 +38,15 @@ case "${MODE}" in
     INSTR="${PRE}
 
 你的角色：**项目总指挥**。请阅读 KB/task.md、KB/project.md、KB/roster.md（各 agent 的特长花名册）与仓库，
-把本任务拆成若干子任务，并**按每个 agent 的特长**分派。可用座位：claude、codex、hermes。
-原则：握全上下文/改坏东西代价高的活留给 claude；代码验证派 codex；工具/环境广度活派 hermes。
+把本任务拆成若干子任务，并**按每个 agent 的特长**分派。可用座位：claude、codex、hermes、kimi。
+原则：**执行一律优先派 hermes/kimi（飞毛腿，快）；claude、codex 只指挥/验证、不执行**（claude 揽 exec 会超时空转）。
 ${BRIEF:+补充：${BRIEF}}
 
 **输出要求**：先简述思路，最后用一个 \`\`\`json 代码块输出派活计划，形如：
 \`\`\`json
-[{\"agent\":\"claude\",\"subtask\":\"……\"},{\"agent\":\"codex\",\"subtask\":\"……\"}]
+[{\"agent\":\"hermes\",\"subtask\":\"……\"},{\"agent\":\"kimi\",\"subtask\":\"……\"}]
 \`\`\`
-只在该 JSON 块里放计划，agent 字段必须是 claude/codex/hermes 之一。"
+只在该 JSON 块里放计划，agent 字段必须是 claude/codex/hermes/kimi 之一；执行子任务请只派 hermes/kimi。"
     loop_log "Claude 总指挥席入席 iter=${ITER}（plan，只读）"
     set +e
     ( cd "${REPO}" && claude -p "${INSTR}" "${CL_OPTS[@]}" ${RO_DIRS[@]+"${RO_DIRS[@]}"} --permission-mode plan ) >"${OUT}" 2>&1
@@ -87,6 +87,7 @@ ${BRIEF:+补充：${BRIEF}}
 
 你的角色：**验证席**（只读）。审查本轮未提交改动的正确性/安全性/是否满足验收标准。
 按严重度标注：[CRITICAL]/[HIGH]/[MEDIUM]/[LOW]。
+若 BRIEF 标明有座位失败/子任务未执行，请据**任务完整性是否受损**裁决：任务已由其余座位完成则不应因个别失败机械 BLOCK。
 ${BRIEF:+额外关注：${BRIEF}}
 **最后单独成行输出**：无 HIGH/CRITICAL → VERDICT: PASS；否则 → VERDICT: BLOCK"
     loop_log "Claude 验证席入席 iter=${ITER}（review，只读）"
