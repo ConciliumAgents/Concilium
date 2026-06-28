@@ -21,6 +21,11 @@ DEFAULT_TASKS = ROOT / "evals" / "loop-engine" / "tasks.json"
 OUT_DIR = ROOT / "evals" / "loop-engine" / "runs"
 
 
+def output_path_for(now: datetime.datetime) -> Path:
+    stamp = now.strftime("%Y%m%d-%H%M%S-%f")
+    return OUT_DIR / f"{stamp}.jsonl"
+
+
 def load_tasks(path: Path) -> list[dict]:
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, list):
@@ -85,8 +90,7 @@ def main() -> int:
 
     tasks = select_tasks(load_tasks(Path(args.tasks)), args.include_optional)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    out_path = OUT_DIR / f"{stamp}.jsonl"
+    out_path = output_path_for(datetime.datetime.now())
 
     failed = 0
     with out_path.open("w", encoding="utf-8") as out:

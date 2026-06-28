@@ -7,6 +7,7 @@ import pathlib
 import sys
 import tempfile
 import unittest
+import datetime
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
@@ -55,6 +56,13 @@ class EvalRoundtableTests(unittest.TestCase):
         tasks = eval_roundtable.load_tasks(eval_roundtable.DEFAULT_TASKS)
         task = next(item for item in tasks if item["id"] == "doc_drift_lessons_archive")
         self.assertIn("test_lessons_archive_docs.py", task["test_cmd"])
+
+    def test_output_path_includes_microseconds(self):
+        now = datetime.datetime(2026, 1, 2, 3, 4, 5, 6789)
+        self.assertEqual(
+            eval_roundtable.output_path_for(now).name,
+            "20260102-030405-006789.jsonl",
+        )
 
 
 if __name__ == "__main__":
