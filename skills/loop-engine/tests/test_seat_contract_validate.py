@@ -1,0 +1,58 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import importlib.util
+import pathlib
+import tempfile
+import unittest
+
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+MODULE = ROOT / "bin" / "seat-contract-validate.py"
+spec = importlib.util.spec_from_file_location("seat_contract_validate", MODULE)
+validator = importlib.util.module_from_spec(spec)
+assert spec.loader is not None
+spec.loader.exec_module(validator)
+
+
+class SeatContractValidateTests(unittest.TestCase):
+    def test_extract_valid_plan(self):
+        text = '```json\n[{"agent":"kimi","subtask":"Do the work."}]\n```'
+        self.assertEqual(
+            validator.extract_plan(text),
+            [{"agent": "kimi", "subtask": "Do the work."}],
+        )
+
+    def test_invalid_plan_has_error(self):
+        self.assertTrue(validator.validate_plan("no json here"))
+
+    def test_exec_requires_lessons(self):
+        self.assertEqual(
+            validator.validate_exec("done\n## 教训\n### 通用\n- （无）\n### agents\n- （无）"),
+            [],
+        )
+        self.assertIn("## 教训", validator.validate_exec("done")[0])
+
+    def test_exec_requires_project_lesson_subsection_beyond_general(self):
+        errors = validator.validate_exec("done\n## 教训\n### 通用\n- （无）")
+        self.assertIn("project lesson subsection", errors[0])
+
+    def test_exec_ignores_project_like_headings_outside_lessons(self):
+        text = "### unrelated\nnotes\n## 教训\n### 通用\n- （无）"
+        errors = validator.validate_exec(text)
+        self.assertIn("project lesson subsection", errors[0])
+
+    def test_review_requires_exactly_one_verdict(self):
+        self.assertEqual(validator.validate_review("Looks fine\nVERDICT: PASS\n"), [])
+        self.assertTrue(validator.validate_review("VERDICT: PASS\nVERDICT: BLOCK\n"))
+        self.assertTrue(validator.validate_review("no verdict"))
+
+    def test_infers_mode_from_minute_filename(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = pathlib.Path(td) / "iter-1-kimi-review.md"
+            path.write_text("Looks fine\nVERDICT: BLOCK\n", encoding="utf-8")
+            self.assertEqual(validator.validate_file(path), [])
+
+
+if __name__ == "__main__":
+    unittest.main()
