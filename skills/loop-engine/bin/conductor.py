@@ -133,6 +133,31 @@ def session_dir(repo: str) -> Path:
     return Path(repo) / ".roundtable" / "sessions" / sid
 
 
+def _load_profiles(repo: str) -> dict:
+    """读 roundtable-memory/ROSTER-PROFILES.md，返回 {seat: 画像正文}。
+    文件不存在=正常（返回 {} → 退化纯出厂层）；读/解析异常 → 整体回退 {} + 警告（绝不半合并）。"""
+    p = Path(repo) / "roundtable-memory" / "ROSTER-PROFILES.md"
+    if not p.is_file():
+        return {}
+    try:
+        text = p.read_text(encoding="utf-8", errors="replace")
+        out, cur, buf = {}, None, []
+        for line in text.splitlines():
+            m = re.match(r"^##\s+([A-Za-z0-9_]+)\b", line)
+            if m:
+                if cur:
+                    out[cur] = "\n".join(buf).strip()
+                cur, buf = m.group(1).strip().lower(), []
+            elif cur is not None:
+                buf.append(line)
+        if cur:
+            out[cur] = "\n".join(buf).strip()
+        return out
+    except Exception as e:
+        print(f"\033[33m[loop-engine] ROSTER-PROFILES 解析失败，退化纯出厂层: {e}\033[0m", file=sys.stderr)
+        return {}
+
+
 def write_roster(repo: str, seats=None, seat_models=None) -> list[str]:
     """探测本地座位，写本会议在座成员的 KB/roster.md（标注各自本次用的脑子），返回在座座位名列表。
     seats=None 表示所有可用都上桌；否则按白名单。seat_models={agent:{provider,model}}。"""
@@ -143,7 +168,8 @@ def write_roster(repo: str, seats=None, seat_models=None) -> list[str]:
         detected = json.loads(p.stdout)
     except Exception:
         return []
-    lines = ["# 座位花名册（KB · 本会议在座成员，总指挥按特长派活）", ""]
+    profiles = _load_profiles(repo)   # {} 时退化为纯出厂层（零回归）
+    lines = ["# 座位花名册（KB · 本会议在座成员，总指挥按出厂特长 + 实战画像派活）", ""]
     seated = []
     for s in detected:
         name = s["seat"]
@@ -157,9 +183,14 @@ def write_roster(repo: str, seats=None, seat_models=None) -> list[str]:
         prov = chosen.get("provider") or s.get("provider", "")
         mod = chosen.get("model") or s.get("model", "")
         eff = f" [{s.get('effort')}]" if s.get("effort") else ""
-        lines += [f"## {name}（本次用 {mod} via {prov}{eff}）",
-                  f"- 特长：{s.get('strength','')}",
-                  f"- 可任模式：{', '.join(s.get('modes', []))}", ""]
+        block = [f"## {name}（本次用 {mod} via {prov}{eff}）",
+                 f"- 出厂特长：{s.get('strength','')}",
+                 f"- 可任模式：{', '.join(s.get('modes', []))}"]
+        prof = profiles.get(name)
+        if prof:
+            block.append("- 实战画像（据此选席派活）：")
+            block += ["  " + ln for ln in prof.splitlines() if ln.strip()]
+        lines += block + [""]
     try:
         (session_dir(repo) / "KB" / "roster.md").write_text("\n".join(lines), encoding="utf-8")
     except OSError:

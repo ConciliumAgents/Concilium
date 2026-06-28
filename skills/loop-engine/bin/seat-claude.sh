@@ -37,7 +37,7 @@ case "${MODE}" in
     OUT="${TABLE}/minutes/iter-${ITER}-claude-plan.md"
     INSTR="${PRE}
 
-你的角色：**项目总指挥**。请阅读 KB/task.md、KB/project.md、KB/roster.md（各 agent 的特长花名册）与仓库，
+你的角色：**项目总指挥**。请阅读 KB/task.md、KB/project.md、KB/roster.md（各 agent 的出厂特长 **+ 实战画像/适合/坑——据实战画像选席派活**）与仓库，
 把本任务拆成若干子任务，并**按每个 agent 的特长**分派。可用座位：claude、codex、hermes、kimi。
 原则：**执行一律优先派 hermes/kimi（飞毛腿，快）；claude、codex 只指挥/验证、不执行**（claude 揽 exec 会超时空转）。
 ${BRIEF:+补充：${BRIEF}}
