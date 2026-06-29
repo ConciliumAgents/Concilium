@@ -44,11 +44,66 @@ def run_cmd(args: list[str], cwd: Path, timeout: int = 60) -> tuple[int, str]:
     return proc.returncode, proc.stdout or ""
 
 
+def run_shell(cmd: str, cwd: Path, timeout: int) -> tuple[int, str]:
+    proc = subprocess.run(
+        cmd,
+        cwd=cwd,
+        shell=True,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        timeout=timeout,
+    )
+    return proc.returncode, proc.stdout or ""
+
+
 def git_output(args: list[str], cwd: Path = ROOT) -> str:
     rc, out = run_cmd(["git", *args], cwd)
     if rc != 0:
         raise RuntimeError(out.strip() or f"git {' '.join(args)} failed")
     return out.strip()
+
+
+def run_verify_cmds(repo: Path, commands: list[str], timeout: int) -> dict:
+    results = []
+    passed = True
+    for cmd in commands:
+        rc, out = run_shell(cmd, repo, timeout)
+        results.append({"command": cmd, "returncode": rc, "output": out[-4000:]})
+        if rc != 0:
+            passed = False
+    return {"passed": passed, "commands": results}
+
+
+def git_status_porcelain(repo: Path) -> str:
+    rc, out = run_cmd(["git", "status", "--porcelain"], repo)
+    if rc != 0:
+        raise RuntimeError(out.strip() or "git status failed")
+    return out.strip()
+
+
+def ensure_clean_repo(repo: Path, force: bool) -> None:
+    status = git_status_porcelain(repo)
+    if status and not force:
+        raise RuntimeError(f"dirty repository: {repo}")
+
+
+def changed_files(repo: Path) -> list[str]:
+    rc, tracked = run_cmd(["git", "diff", "--name-only", "HEAD"], repo)
+    rc2, untracked = run_cmd(["git", "ls-files", "--others", "--exclude-standard"], repo)
+    if rc != 0 or rc2 != 0:
+        return []
+    return sorted({*(x for x in tracked.splitlines() if x), *(x for x in untracked.splitlines() if x)})
+
+
+def diff_stat(repo: Path) -> str:
+    rc, out = run_cmd(["git", "diff", "--stat", "HEAD"], repo)
+    return out.strip() if rc == 0 else ""
+
+
+def diff_patch(repo: Path) -> str:
+    rc, out = run_cmd(["git", "diff", "HEAD"], repo)
+    return out if rc == 0 else ""
 
 
 def now_stamp() -> str:

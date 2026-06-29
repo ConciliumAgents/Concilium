@@ -4,6 +4,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import pathlib
+import subprocess
 import tempfile
 import unittest
 
@@ -62,6 +63,24 @@ class BenchmarkRoundtableTests(unittest.TestCase):
             self.assertTrue((run_dir / "task-sample" / "baseline-kimi" / "report.md").is_file())
             self.assertTrue((run_dir / "task-sample" / "baseline-kimi" / "diff.patch").is_file())
             self.assertTrue((run_dir / "task-sample" / "baseline-kimi" / "test-results.txt").is_file())
+
+    def test_run_verify_cmds_marks_failure(self):
+        with tempfile.TemporaryDirectory() as td:
+            result = benchmark.run_verify_cmds(
+                pathlib.Path(td),
+                ["python3 -c 'import sys; sys.exit(3)'"],
+                timeout=30,
+            )
+        self.assertFalse(result["passed"])
+        self.assertEqual(result["commands"][0]["returncode"], 3)
+
+    def test_refuse_dirty_repo_without_force(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo = pathlib.Path(td)
+            subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.DEVNULL)
+            (repo / "dirty.txt").write_text("dirty", encoding="utf-8")
+            with self.assertRaises(RuntimeError):
+                benchmark.ensure_clean_repo(repo, force=False)
 
 
 if __name__ == "__main__":
