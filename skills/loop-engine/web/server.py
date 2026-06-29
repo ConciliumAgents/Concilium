@@ -27,6 +27,7 @@ import capacity_status  # noqa: E402
 import concilium_config  # noqa: E402
 import concilium_events  # noqa: E402
 import concilium_runtime  # noqa: E402
+import budget_guard  # noqa: E402
 
 RUNS: dict[str, dict] = {}   # run_id -> {"q": Queue}
 _seq = {"n": 0}
@@ -177,14 +178,29 @@ def build_preflight(params: dict) -> dict:
     return concilium_runtime.run_concilium_adapter(_adapter_params(params, preview=True))
 
 
+def _intended_run_guard(params: dict, preview_result: dict) -> tuple[str, str, dict]:
+    request = concilium_runtime.normalize_request(_adapter_params(params))
+    request_fingerprint = concilium_runtime.request_fingerprint(request)
+    guard_preview = dict(preview_result)
+    guard_preview["mode"] = request["mode"]
+    guard_preview["request"] = request
+    guard_preview["request_fingerprint"] = request_fingerprint
+    guard = budget_guard.evaluate_budget_guard(guard_preview, mode=request["mode"])
+    return request["mode"], request_fingerprint, guard
+
+
 def preflight_response(params: dict) -> dict:
     result = build_preflight(params)
+    run_mode, run_request_fingerprint, run_guard = _intended_run_guard(params, result)
     response = {
         "route": result.get("route", {}),
         "preflight": result.get("preflight", {}),
         "capacity": result.get("capacity", []),
         "signals": result.get("signals", {}),
         "guard": result.get("guard", {}),
+        "run_guard": run_guard,
+        "run_mode": run_mode,
+        "run_request_fingerprint": run_request_fingerprint,
     }
     for key in ("request_fingerprint", "expected_max_agent_calls"):
         if key in result:

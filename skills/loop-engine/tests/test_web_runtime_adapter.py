@@ -68,6 +68,64 @@ class WebRuntimeAdapterTests(unittest.TestCase):
         self.assertTrue(hasattr(run_kwargs["event_sink"], "emit"))
         self.assertTrue(hasattr(run_kwargs["event_sink"], "done_emitted"))
 
+    def test_preflight_response_includes_intended_live_run_guard_without_executing(self):
+        preview = {
+            "route": {"lane": "fast", "reason": "low risk", "required_seats": ["kimi"]},
+            "preflight": {"status": "warn", "warnings": ["kimi unknown"], "blocking_seats": []},
+            "capacity": [{
+                "seat": "kimi",
+                "status": "unknown",
+                "reason": "capacity unavailable",
+                "checked_at": "2026-06-29T00:00:00Z",
+            }],
+            "signals": {},
+            "guard": {"status": "allowed"},
+            "request_fingerprint": "preview-fingerprint",
+            "expected_max_agent_calls": 1,
+        }
+
+        with mock.patch.object(web_server, "build_preflight", return_value=preview):
+            response = web_server.preflight_response({
+                "repo": ".",
+                "task": "Change routing.",
+                "dry_run": False,
+            })
+
+        self.assertEqual(response["guard"]["status"], "allowed")
+        self.assertEqual(response["run_mode"], "live_run")
+        self.assertNotEqual(response["run_request_fingerprint"], response["request_fingerprint"])
+        self.assertEqual(response["run_guard"]["status"], "confirmation_required")
+        self.assertEqual(
+            response["run_guard"]["confirmation_payload"]["request_fingerprint"],
+            response["run_request_fingerprint"],
+        )
+
+    def test_preflight_response_respects_stub_run_as_intended_guard_mode(self):
+        preview = {
+            "route": {"lane": "fast", "reason": "low risk", "required_seats": ["kimi"]},
+            "preflight": {"status": "warn", "warnings": ["kimi unknown"], "blocking_seats": []},
+            "capacity": [{"seat": "kimi", "status": "unknown"}],
+            "signals": {},
+            "guard": {"status": "allowed"},
+            "request_fingerprint": "preview-fingerprint",
+        }
+
+        with mock.patch.object(web_server, "build_preflight", return_value=preview):
+            response = web_server.preflight_response({
+                "repo": ".",
+                "task": "Change routing.",
+                "mode": "stub_run",
+            })
+
+        self.assertEqual(response["run_mode"], "stub_run")
+        self.assertEqual(response["run_guard"]["status"], "allowed")
+
+    def test_debug_console_gates_run_on_run_guard(self):
+        html = (ROOT / "skills" / "loop-engine" / "web" / "index.html").read_text(encoding="utf-8")
+
+        self.assertIn("data.run_guard || data.guard", html)
+        self.assertIn("confirmation_required", html)
+
     def test_run_thread_blocked_result_emits_done_without_conductor_run(self):
         q: queue.Queue = queue.Queue()
         with mock.patch.object(web_server.conductor, "run", side_effect=AssertionError("must not call conductor.run")) as conductor_run, \

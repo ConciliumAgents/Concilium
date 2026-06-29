@@ -14,6 +14,8 @@ The current browser panel is the Concilium Debug Console. It remains a local API
 
 Mutation requests send `X-Loop-Token`. `GET /api/events` returns SSE text.
 
+`GET /api/config/effective` returns `{repo, config}`. Consumers should read the inner `config` object when present; older raw-config fixtures may omit the envelope.
+
 ## Token Handoff
 
 The service may be launched with `--token-file PATH`. When supplied, it writes a user-only JSON token file:
@@ -26,6 +28,7 @@ No token file is written unless the caller explicitly supplies `--token-file`.
 
 ## Client Methods
 
+- `from_token_file(path)`
 - `status()`
 - `preflight(request)`
 - `run(request, confirmation=None)`

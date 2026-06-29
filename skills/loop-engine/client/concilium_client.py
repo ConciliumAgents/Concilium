@@ -6,6 +6,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+SSE_TIMEOUT_SECONDS = 90
+
 
 class ConciliumClient:
     def __init__(self, base_url: str, token: str) -> None:
@@ -51,7 +53,7 @@ class ConciliumClient:
             method="GET",
             headers={"X-Loop-Token": self.token},
         )
-        with urllib.request.urlopen(request, timeout=30) as response:
+        with urllib.request.urlopen(request, timeout=SSE_TIMEOUT_SECONDS) as response:
             return response.read().decode("utf-8")
 
     def effective_config(self, repo: str) -> dict:

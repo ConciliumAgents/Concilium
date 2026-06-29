@@ -117,6 +117,7 @@ const SEATS = ["claude","codex","hermes","kimi"];
 const LOOP_TOKEN = document.querySelector('meta[name="loop-token"]')?.content || "";  // server 启动时注入，POST /api/run 必带
 let doctor = {};
 let preflightBlocked = false;
+const BLOCKING_GUARD_STATUSES = ["blocked", "confirmation_required"];
 
 async function loadDoctor(){
   $("#rosterhint").textContent = "探测中…";
@@ -223,11 +224,11 @@ function applyCapacity(capacity){
 function setDebugFields(data){
   const route = data.route || {};
   const pre = data.preflight || {};
-  const guard = data.guard || {};
+  const guard = data.run_guard || data.guard || {};
   document.querySelector('[data-dbg="route_lane"]').textContent = route.lane || "-";
   document.querySelector('[data-dbg="preflight_status"]').textContent = pre.status || "-";
   document.querySelector('[data-dbg="guard_status"]').textContent = guard.status || "-";
-  document.querySelector('[data-dbg="request_fingerprint"]').textContent = data.request_fingerprint || "-";
+  document.querySelector('[data-dbg="request_fingerprint"]').textContent = data.run_request_fingerprint || data.request_fingerprint || "-";
 }
 
 async function runPreflight(){
@@ -246,11 +247,17 @@ async function runPreflight(){
     applyCapacity(data.capacity);
     const route = data.route || {};
     const pre = data.preflight || {};
+    const guard = data.run_guard || data.guard || {};
     const seats = (route.required_seats || []).join(", ") || "none";
     const warnings = (pre.warnings || []).join("；");
-    preflightBlocked = pre.status === "blocked";
+    const guardBlocked = BLOCKING_GUARD_STATUSES.includes(guard.status);
+    preflightBlocked = pre.status === "blocked" || guardBlocked;
     $("#run").disabled = preflightBlocked;
-    if(preflightBlocked){
+    if(guard.status === "confirmation_required"){
+      $("#routepreview").innerHTML = `<span class="err">lane: ${route.lane || "-"} · guard: confirmation_required（Phase 4 Debug Console 不提供确认 UI）</span>`;
+    }else if(guard.status === "blocked"){
+      $("#routepreview").innerHTML = `<span class="err">lane: ${route.lane || "-"} · guard blocked: ${(guard.blocking_seats || []).join(", ") || guard.reason || "blocked"}</span>`;
+    }else if(pre.status === "blocked"){
       $("#routepreview").innerHTML = `<span class="err">lane: ${route.lane || "-"} · blocked: ${(pre.blocking_seats || []).join(", ")}</span>`;
     }else if(pre.status === "warn"){
       $("#routepreview").textContent = `lane: ${route.lane || "-"} · required: ${seats} · warn: ${warnings || "capacity unknown"}`;
@@ -290,7 +297,7 @@ function handle(ev){
 
 $("#run").onclick=()=>{
   try{
-    if(preflightBlocked){ $("#formerr").textContent="预检已阻断，请调整席位或配置后再运行。"; return; }
+    if(preflightBlocked){ $("#formerr").textContent="预检或运行预算闸门已阻断；Phase 4 Debug Console 不提供确认 UI。"; return; }
     const params = collectParams();
     $("#formerr").textContent="";
     startRun(params);
