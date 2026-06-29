@@ -15,18 +15,29 @@ def read(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""
 
 
-def summarize_minutes(minutes_dir: Path) -> list[dict]:
+def summarize_minutes(minutes_dir: Path, timings: list[dict] | None = None) -> list[dict]:
+    timing_index = {
+        (str(row.get("iter", "")), row.get("seat", ""), row.get("mode", "")): row
+        for row in (timings or [])
+    }
     rows = []
     for path in sorted(minutes_dir.glob("iter-*-*.md")):
         text = read(path)
         verdict = ",".join(VERDICT_RE.findall(text))
         match = re.match(r"iter-(\d+)-(.+?)-(plan|exec|review)", path.name)
+        key = (
+            match.group(1) if match else "",
+            match.group(2) if match else "",
+            match.group(3) if match else "",
+        )
+        timing = timing_index.get(key, {})
         rows.append({
             "file": path.name,
-            "iter": match.group(1) if match else "",
-            "seat": match.group(2) if match else "",
-            "mode": match.group(3) if match else "",
+            "iter": key[0],
+            "seat": key[1],
+            "mode": key[2],
             "verdict": verdict,
+            "duration_seconds": timing.get("duration_seconds", ""),
             "bytes": len(text.encode("utf-8")),
         })
     return rows
@@ -44,7 +55,7 @@ def build_report(session: Path) -> str:
         except json.JSONDecodeError:
             roundtable = {}
 
-    rows = summarize_minutes(session / "minutes")
+    rows = summarize_minutes(session / "minutes", roundtable.get("seat_timings", []))
     lines = [
         f"# Roundtable Session Report: {session.name}",
         "",
@@ -59,12 +70,13 @@ def build_report(session: Path) -> str:
         task[:2000] or "No task.md found.",
         "",
         "## Minute Index",
-        "| Iter | Seat | Mode | Verdict | Bytes | File |",
-        "|---|---|---|---|---:|---|",
+        "| Iter | Seat | Mode | Verdict | Duration(s) | Bytes | File |",
+        "|---|---|---|---|---:|---:|---|",
     ]
     for row in rows:
         lines.append(
-            f"| {row['iter']} | {row['seat']} | {row['mode']} | {row['verdict'] or '-'} | {row['bytes']} | `{row['file']}` |"
+            f"| {row['iter']} | {row['seat']} | {row['mode']} | {row['verdict'] or '-'} | "
+            f"{row['duration_seconds'] if row['duration_seconds'] != '' else '-'} | {row['bytes']} | `{row['file']}` |"
         )
     lines += [
         "",

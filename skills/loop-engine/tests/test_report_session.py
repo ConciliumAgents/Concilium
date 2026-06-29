@@ -40,6 +40,38 @@ class ReportSessionTests(unittest.TestCase):
         self.assertIn("## Latest Test Output", report)
         self.assertIn("| 1 | kimi | review | PASS |", report)
 
+    def test_build_report_includes_seat_timing_when_available(self):
+        with tempfile.TemporaryDirectory() as td:
+            session = pathlib.Path(td) / "session-1"
+            kb = session / "KB"
+            minutes = session / "minutes"
+            kb.mkdir(parents=True)
+            minutes.mkdir()
+            (session / "roundtable.json").write_text(
+                json.dumps(
+                    {
+                        "participants": ["claude", "kimi"],
+                        "iter": 2,
+                        "seat_timings": [
+                            {
+                                "iter": 1,
+                                "seat": "kimi",
+                                "mode": "exec",
+                                "rc": 0,
+                                "duration_seconds": 12.345,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (minutes / "iter-1-kimi-exec.md").write_text("Edited file\n", encoding="utf-8")
+
+            report = report_session.build_report(session)
+
+        self.assertIn("| Iter | Seat | Mode | Verdict | Duration(s) | Bytes | File |", report)
+        self.assertIn("| 1 | kimi | exec | - | 12.345 |", report)
+
 
 if __name__ == "__main__":
     unittest.main()

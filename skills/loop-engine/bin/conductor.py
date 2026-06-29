@@ -11,7 +11,7 @@
 依赖：仅 Python 标准库。
 """
 from __future__ import annotations
-import argparse, datetime, hashlib, json, os, re, signal, subprocess, sys
+import argparse, datetime, hashlib, json, os, re, signal, subprocess, sys, time
 from pathlib import Path
 
 BIN = Path(__file__).resolve().parent
@@ -105,6 +105,40 @@ def run_seat(agent: str, mode: str, repo: str, brief: str = "", extra: list[str]
         except Exception:
             out = ""
         return 124, (out or "") + f"\n(⏱ 座位 {agent} [{mode}] 超时 {timeout}s，已强杀整组)"
+
+
+def timed_run_seat(
+    repo: str,
+    iteration: int,
+    agent: str,
+    mode: str,
+    brief: str = "",
+    extra: list[str] | None = None,
+    provider: str = "",
+    model: str = "",
+) -> tuple[int, str]:
+    started = time.monotonic()
+    rc, out = run_seat(agent, mode, repo, brief=brief, extra=extra, provider=provider, model=model)
+    _append_seat_timing(repo, iteration, agent, mode, rc, time.monotonic() - started)
+    return rc, out
+
+
+def _append_seat_timing(repo: str, iteration: int, agent: str, mode: str, rc: int, duration: float) -> None:
+    try:
+        state_path = session_dir(repo) / "roundtable.json"
+        state = {}
+        if state_path.exists():
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+        state.setdefault("seat_timings", []).append({
+            "iter": iteration,
+            "seat": agent,
+            "mode": mode,
+            "rc": rc,
+            "duration_seconds": round(max(0.0, duration), 3),
+        })
+        state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass
 
 
 def _dry_seat(agent: str, mode: str, brief: str) -> tuple[int, str]:
@@ -691,8 +725,8 @@ def run(repo, task, commander="claude", reviewer="", max_iters=5, test_cmd="",
         # 总指挥派活
         cp, cm = sm(commander)
         reporter.seat(commander, "plan", "读花名册分派", phase="start")
-        rc, out = run_seat(
-            commander, "plan", repo,
+        rc, out = timed_run_seat(
+            repo, it, commander, "plan",
             brief=build_plan_brief(feedback, executors, reviewer),
             provider=cp, model=cm,
         )
@@ -719,7 +753,7 @@ def run(repo, task, commander="claude", reviewer="", max_iters=5, test_cmd="",
         for p in plan:
             ep, em = sm(p["agent"])
             reporter.seat(p["agent"], "exec", p["subtask"], phase="start")
-            erc, eout = run_seat(p["agent"], "exec", repo, brief=p["subtask"], provider=ep, model=em)
+            erc, eout = timed_run_seat(repo, it, p["agent"], "exec", brief=p["subtask"], provider=ep, model=em)
             reporter.seat(p["agent"], "exec", p["subtask"], erc, phase="done")
             reporter.transcript(p["agent"], "exec", eout)
             if erc != 0:
@@ -737,7 +771,7 @@ def run(repo, task, commander="claude", reviewer="", max_iters=5, test_cmd="",
         for idx, candidate in enumerate(review_chain):
             rp, rm = sm(candidate)
             reporter.seat(candidate, "review", "独立验证", phase="start")
-            vrc, vout = run_seat(candidate, "review", repo, brief=rbrief, provider=rp, model=rm)
+            vrc, vout = timed_run_seat(repo, it, candidate, "review", brief=rbrief, provider=rp, model=rm)
             verdict = VERDICT_MAP.get(vrc, "ERR")
             reporter.seat(candidate, "review", "", vrc, phase="done")
             reporter.transcript(candidate, "review", vout)

@@ -182,6 +182,42 @@ class ConductorCoreTests(unittest.TestCase):
         self.assertIn("不要输出只读复审子任务", plan_briefs[0])
         self.assertIn(("verdict", "hermes", "PASS"), reporter.events)
 
+    def test_run_records_seat_timings_in_roundtable_state(self):
+        reporter = QuietReporter()
+        with tempfile.TemporaryDirectory() as td:
+            repo = pathlib.Path(td)
+            init_repo(repo)
+
+            def fake_run_seat(agent, mode, repo_arg, brief="", extra=None, provider="", model=""):
+                if mode == "plan":
+                    return 0, '```json\n[{"agent":"kimi","subtask":"edit tracked.md"}]\n```'
+                if mode == "exec":
+                    pathlib.Path(repo_arg, "tracked.md").write_text("base\nchanged\n", encoding="utf-8")
+                    return 0, "edited"
+                if mode == "review":
+                    return 0, "VERDICT: PASS\n"
+                return self.fail(f"unexpected call: {agent} {mode}")
+
+            with ConductorPatch(self, repo, fake_run_seat):
+                rc = conductor.run(str(repo), "Edit tracked.md", max_iters=1, reporter=reporter)
+
+            state = json.loads(
+                (repo / ".roundtable" / "sessions" / "unit-session" / "roundtable.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+
+        self.assertEqual(rc, 0)
+        timings = state["seat_timings"]
+        observed = {(row["seat"], row["mode"], row["rc"]) for row in timings}
+        self.assertIn(("claude", "plan", 0), observed)
+        self.assertIn(("kimi", "exec", 0), observed)
+        self.assertIn(("hermes", "review", 0), observed)
+        for row in timings:
+            self.assertEqual(row["iter"], 1)
+            self.assertIsInstance(row["duration_seconds"], float)
+            self.assertGreaterEqual(row["duration_seconds"], 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()
