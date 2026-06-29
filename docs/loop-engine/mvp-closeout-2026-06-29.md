@@ -92,3 +92,7 @@ Safe cleanup after closeout:
 - keep historical `loop-engine/` branches unless explicitly reviewed;
 - do not delete `.roundtable/`, `roundtable-memory/`, or local private memory artifacts;
 - do not touch unrelated `.DS_Store` files.
+
+## Phase 3 Follow-up
+
+Concilium Phase 3 closeout is tracked in `docs/loop-engine/phase3-closeout-2026-06-29.md`.
