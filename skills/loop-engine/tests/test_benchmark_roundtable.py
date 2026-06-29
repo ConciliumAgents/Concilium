@@ -87,6 +87,20 @@ class BenchmarkRoundtableTests(unittest.TestCase):
         self.assertIn("evals/loop-engine/phase2/worktrees", str(path))
         self.assertTrue(str(path).endswith("run-1/baseline-kimi/sample"))
 
+    def test_write_summary_creates_markdown(self):
+        with tempfile.TemporaryDirectory() as td:
+            run_dir = pathlib.Path(td)
+            task = sample_task()
+            records = [
+                benchmark.run_dry_lane(task, "baseline-kimi", run_dir / "task-sample" / "baseline-kimi", "h", "b"),
+                benchmark.run_dry_lane(task, "roundtable", run_dir / "task-sample" / "roundtable", "h", "b"),
+            ]
+            benchmark.write_records(run_dir / "records.jsonl", records)
+            benchmark.write_summary(run_dir)
+            summary = (run_dir / "summary.md").read_text(encoding="utf-8")
+        self.assertIn("# Loop Engine Phase 2 Benchmark Summary", summary)
+        self.assertIn("| sample | PASS | PASS | tie |", summary)
+
 
 if __name__ == "__main__":
     unittest.main()

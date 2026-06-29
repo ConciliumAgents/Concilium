@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import importlib.util
 import json
 import os
 import re
@@ -393,6 +394,16 @@ def write_records(path: Path, records: list[dict]) -> None:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
+def write_summary(run_dir: Path) -> None:
+    module_path = ROOT / "skills" / "loop-engine" / "bin" / "summarize-benchmark.py"
+    spec = importlib.util.spec_from_file_location("summarize_benchmark", module_path)
+    mod = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(mod)
+    records = mod.read_records(run_dir / "records.jsonl")
+    write_text(run_dir / "summary.md", mod.build_summary(records))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run Loop Engine Phase 2 benchmark tasks.")
     parser.add_argument("--tasks", default=str(DEFAULT_TASKS))
@@ -431,6 +442,7 @@ def main() -> int:
         ensure_clean_repo(ROOT, force=args.force_dirty_base)
         records = run_live_batch(tasks, run_dir, stamp, args.base, args.timeout, harness_commit)
     write_records(run_dir / "records.jsonl", records)
+    write_summary(run_dir)
     print(run_dir)
     return 0
 
