@@ -188,6 +188,22 @@ class ConciliumRuntimeRequestTests(unittest.TestCase):
                     )
 
 
+class ConciliumRuntimeAccountingTests(unittest.TestCase):
+    def test_review_expected_max_agent_calls_counts_executor_and_reviewer_per_attempt(self):
+        route = {"lane": "review", "required_seats": ["kimi", "hermes"]}
+        cases = {
+            0: 2,
+            1: 4,
+            2: 6,
+        }
+        for repair_limit, expected in cases.items():
+            with self.subTest(repair_limit=repair_limit):
+                config = copy.deepcopy(BASE_CONFIG)
+                config["lanes"]["review"]["review_repair_limit"] = repair_limit
+
+                self.assertEqual(concilium_runtime.expected_max_agent_calls(route, config), expected)
+
+
 class ConciliumRuntimeAdapterTests(unittest.TestCase):
     def test_preview_builds_route_without_executor_call(self):
         with tempfile.TemporaryDirectory() as td:
@@ -267,6 +283,37 @@ class ConciliumRuntimeAdapterTests(unittest.TestCase):
         self.assertEqual(sink.events[-2]["rc"], 3)
         self.assertEqual(sink.events[-1]["rc"], 3)
         executor.assert_not_called()
+
+    def test_live_run_executor_error_returns_error_and_emits_finish_done_once(self):
+        with tempfile.TemporaryDirectory() as td:
+            sink = concilium_runtime.concilium_events.ListEventSink()
+
+            def failing_executor(preview, effective):
+                raise RuntimeError("executor failed with token sk-secret123 user@example.com")
+
+            result = concilium_runtime.run_concilium_adapter(
+                {
+                    "repo": td,
+                    "task": "Fix one typo in docs/example.md.",
+                    "test_cmd": "true",
+                    "mode": "live_run",
+                    "signals": {"risk": "low", "file_count": 1, "security_sensitive": False, "ambiguous": False},
+                },
+                event_sink=sink,
+                config=BASE_CONFIG,
+                capacity=[capacity_record("kimi", "ok")],
+                lane_executor=failing_executor,
+            )
+
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result["returncode"], 1)
+        self.assertIn("[REDACTED]", result["error"])
+        self.assertNotIn("sk-secret123", result["error"])
+        self.assertNotIn("user@example.com", result["error"])
+        self.assertEqual([event["type"] for event in sink.events[-2:]], ["finish", "done"])
+        self.assertEqual(sink.events[-1]["rc"], 1)
+        self.assertEqual(len([event for event in sink.events if event["type"] == "done"]), 1)
+        self.assertEqual(result["events"], sink.events)
 
 
 if __name__ == "__main__":

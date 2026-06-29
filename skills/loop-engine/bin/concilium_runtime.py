@@ -14,6 +14,7 @@ import concilium_config  # noqa: E402
 import concilium_events  # noqa: E402
 import concilium_lanes  # noqa: E402
 import concilium_preflight  # noqa: E402
+import capacity_status  # noqa: E402
 import lane_router  # noqa: E402
 
 MODES = {"preview", "stub_run", "live_run"}
@@ -168,7 +169,7 @@ def expected_max_agent_calls(route: dict, config: dict) -> int:
         return 1
     if lane == "review":
         review = config.get("lanes", {}).get("review", {})
-        return 2 + int(review.get("review_repair_limit", 1))
+        return 2 * (int(review.get("review_repair_limit", 1)) + 1)
     if lane == "roundtable":
         roundtable = config.get("lanes", {}).get("roundtable", {})
         seats = list(route.get("required_seats") or roundtable.get("seats") or [])
@@ -288,7 +289,16 @@ def run_concilium_adapter(
         return result
 
     executor = lane_executor or _default_lane_executor
-    execution_result = dict(executor(preview, effective) or {})
+    try:
+        execution_result = dict(executor(preview, effective) or {})
+    except Exception as error:
+        _finish(sink, 1)
+        result = dict(preview)
+        result["status"] = "error"
+        result["returncode"] = 1
+        result["error"] = capacity_status.redact(f"{type(error).__name__}: {error}")
+        result["events"] = _events_from_sink(sink)
+        return result
     if "verify" in execution_result:
         sink.emit("verify", verify=execution_result["verify"])
     if "review_verdict" in execution_result:
