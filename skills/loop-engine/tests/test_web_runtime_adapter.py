@@ -65,7 +65,8 @@ class WebRuntimeAdapterTests(unittest.TestCase):
         self.assertEqual(preflight_params["mode"], "preview")
         self.assertEqual(run_params["mode"], "stub_run")
         self.assertNotIn("event_sink", preflight_kwargs)
-        self.assertIsInstance(run_kwargs["event_sink"], web_server.concilium_events.QueueEventSink)
+        self.assertTrue(hasattr(run_kwargs["event_sink"], "emit"))
+        self.assertTrue(hasattr(run_kwargs["event_sink"], "done_emitted"))
 
     def test_run_thread_blocked_result_emits_done_without_conductor_run(self):
         q: queue.Queue = queue.Queue()
@@ -78,6 +79,44 @@ class WebRuntimeAdapterTests(unittest.TestCase):
 
         conductor_run.assert_not_called()
         self.assertEqual(drain(q), [{"rc": 3, "type": "done"}])
+
+    def test_run_thread_confirmation_required_without_returncode_emits_block_rc(self):
+        q: queue.Queue = queue.Queue()
+        with mock.patch.object(web_server.concilium_runtime, "run_concilium_adapter", return_value={
+            "status": "confirmation_required",
+        }):
+            web_server._run_thread({"repo": ".", "task": "Change routing.", "mode": "live_run"}, q)
+
+        self.assertEqual(drain(q), [{"rc": 3, "type": "done"}])
+
+    def test_run_thread_translates_adapter_events_for_existing_web_ui(self):
+        q: queue.Queue = queue.Queue()
+
+        def fake_adapter(params, **kwargs):
+            sink = kwargs["event_sink"]
+            sink.emit("start", mode="stub_run", lane="review")
+            sink.emit("seat", seat="kimi", lane="review", status="stubbed")
+            sink.emit("finish", rc=0)
+            web_server.concilium_events.emit_done(sink, 0)
+            return {"returncode": 0}
+
+        with mock.patch.object(web_server.concilium_runtime, "run_concilium_adapter", side_effect=fake_adapter):
+            web_server._run_thread({"repo": "/tmp/repo", "task": "Change routing.", "mode": "stub_run"}, q)
+
+        events = drain(q)
+        self.assertEqual(events[0]["type"], "start")
+        self.assertEqual(events[0]["task"], "Change routing.")
+        self.assertEqual(events[0]["repo"], "/tmp/repo")
+        self.assertEqual(events[0]["lane"], "review")
+        self.assertEqual(events[1]["type"], "seat")
+        self.assertEqual(events[1]["agent"], "kimi")
+        self.assertEqual(events[1]["phase"], "done")
+        self.assertEqual(events[1]["rc"], 0)
+        self.assertEqual(events[1]["mode"], "stub")
+        self.assertEqual(events[2]["type"], "finish")
+        self.assertEqual(events[2]["status"], "PASS")
+        self.assertEqual(events[2]["rc"], 0)
+        self.assertEqual(events[-1], {"rc": 0, "type": "done"})
 
     def test_run_thread_defaults_mode_from_dry_run_for_legacy_ui_payloads(self):
         captured = []
@@ -119,13 +158,18 @@ class WebRuntimeAdapterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td, \
                 mock.patch.object(web_server.concilium_config, "load_config", return_value={
                     "api_key": "sk-secret123",
+                    "headers": {"Authorization": "Bearer local-secret-123456"},
                     "lanes": {"fast": {"default_single_agent": "kimi"}},
                 }):
             response = web_server.effective_config_response(td)
 
         text = json.dumps(response, ensure_ascii=False)
-        self.assertIn("kimi", text)
+        self.assertEqual(set(response), {"repo", "config"})
+        self.assertEqual(response["repo"], str(pathlib.Path(td).resolve()))
+        self.assertEqual(response["config"]["lanes"]["fast"]["default_single_agent"], "kimi")
         self.assertNotIn("sk-secret123", text)
+        self.assertNotIn("local-secret-123456", text)
+        self.assertNotIn("Bearer", text)
 
 
 if __name__ == "__main__":

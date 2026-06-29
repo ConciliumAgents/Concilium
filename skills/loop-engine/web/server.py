@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """server.py — 圆桌 WebUI 后端（纯标准库，零依赖）。
 
-复用 conductor 的 Reporter 事件层：WebReporter 把过程事件推进队列，
-SSE 端点把队列实时流给浏览器。仅 127.0.0.1，不对外。
+HTTP/token/SSE 外壳。路由、预检、预算闸门、stub/live 执行都委托给
+Concilium runtime adapter。仅 127.0.0.1，不对外。
 
 端点：
   GET  /                 → 前端页面 index.html
@@ -14,7 +14,7 @@ SSE 端点把队列实时流给浏览器。仅 127.0.0.1，不对外。
   GET  /api/events?run=  → SSE 实时事件流
 """
 from __future__ import annotations
-import datetime, json, os, queue, secrets, subprocess, sys, threading, webbrowser
+import datetime, json, os, queue, re, secrets, subprocess, sys, threading, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
@@ -35,6 +35,13 @@ _lock = threading.Lock()
 # 启动时生成的 CSRF token：服务 index.html 时注入页面（meta），前端 POST /api/run 必带
 # X-Loop-Token。SSE（EventSource）不能带自定义头，故只校验 POST，不校验 GET /api/events。
 TOKEN = secrets.token_urlsafe(32)
+SENSITIVE_RESPONSE_KEY_RE = re.compile(
+    r"(authorization|auth|headers|api[_-]?key|token|secret|password|credential|private|access[_-]?key)",
+    re.I,
+)
+SECRET_RESPONSE_VALUE_RE = re.compile(
+    r"\bBearer\s+[^\s\"'<>]+|\bsk-[A-Za-z0-9_-]+\b|\b[A-Za-z0-9_-]{3,}\.[A-Za-z0-9_-]{3,}\.[A-Za-z0-9_-]{3,}\b"
+)
 
 
 def _adapter_params(params: dict, *, preview: bool = False) -> dict:
@@ -53,11 +60,64 @@ def _result_rc(result: dict) -> int:
         return int(result["returncode"])
     if "rc" in result:
         return int(result["rc"])
+    status = str(result.get("status") or "").strip()
+    if status in {"blocked", "confirmation_required"}:
+        return 3
+    if status == "error":
+        return 1
+    if status in {"", "allowed", "preview", "stubbed"}:
+        return 0
+    if status:
+        return 1
     return 0
 
 
+def _finish_status(rc: int) -> str:
+    if rc == 0:
+        return "PASS"
+    if rc in (2, 3):
+        return "BLOCK"
+    return "ERR"
+
+
+class WebRuntimeEventSink(concilium_events.QueueEventSink):
+    def __init__(self, q: "queue.Queue", params: dict) -> None:
+        super().__init__(q)
+        self.params = params
+
+    def emit(self, event_type: str, **fields) -> None:
+        fields = self._translate(event_type, fields)
+        translated_type = fields.pop("type")
+        super().emit(translated_type, **fields)
+
+    def _translate(self, event_type: str, fields: dict) -> dict:
+        event = dict(fields)
+        event["type"] = event_type
+        if event_type == "start":
+            event.setdefault("repo", self.params.get("repo", ""))
+            event.setdefault("task", self.params.get("task", ""))
+            return event
+        if event_type == "seat":
+            if "agent" not in event and "seat" in event:
+                event["agent"] = event["seat"]
+            if event.get("status") == "stubbed":
+                event.setdefault("phase", "done")
+                event.setdefault("rc", 0)
+                event.setdefault("mode", "stub")
+            return event
+        if event_type == "finish":
+            rc = int(event.get("rc", 0))
+            event.setdefault("status", _finish_status(rc))
+            event["rc"] = rc
+            return event
+        if event_type == "verdict":
+            event.setdefault("reviewer", "")
+            return event
+        return event
+
+
 def _run_thread(params: dict, q: "queue.Queue"):
-    sink = concilium_events.QueueEventSink(q)
+    sink = WebRuntimeEventSink(q, params)
     try:
         confirmation = params.get("confirmation") if isinstance(params.get("confirmation"), dict) else None
         result = concilium_runtime.run_concilium_adapter(
@@ -94,13 +154,22 @@ def project_info(repo: str) -> dict:
     return out
 
 
-def _redact_response(value):
+def _redact_response(value, sensitive: bool = False):
     if isinstance(value, dict):
-        return {key: _redact_response(item) for key, item in value.items()}
+        redacted = {}
+        for key, item in value.items():
+            key_sensitive = sensitive or bool(SENSITIVE_RESPONSE_KEY_RE.search(str(key)))
+            if key_sensitive and isinstance(item, str):
+                redacted[key] = capacity_status.REDACTED
+            else:
+                redacted[key] = _redact_response(item, key_sensitive)
+        return redacted
     if isinstance(value, list):
-        return [_redact_response(item) for item in value]
+        return [_redact_response(item, sensitive) for item in value]
     if isinstance(value, str):
-        return capacity_status.redact(value)
+        if sensitive:
+            return capacity_status.REDACTED
+        return SECRET_RESPONSE_VALUE_RE.sub(capacity_status.REDACTED, capacity_status.redact(value))
     return value
 
 
@@ -142,8 +211,12 @@ def status_response() -> dict:
 
 
 def effective_config_response(repo: str) -> dict:
-    config = concilium_config.load_config(repo)
-    return _redact_response(concilium_config.redact_for_render(config))
+    repo_path = Path(repo).expanduser().resolve()
+    config = concilium_config.load_config(repo_path)
+    return {
+        "repo": str(repo_path),
+        "config": _redact_response(concilium_config.redact_for_render(config)),
+    }
 
 
 def write_token_file(path: Path, base_url: str, token: str) -> None:
