@@ -59,6 +59,23 @@ class ConciliumRunTests(unittest.TestCase):
 
         self.assertEqual(rc, 3)
 
+    def test_print_route_live_forces_preview_mode(self):
+        preview = {
+            "status": "preview",
+            "route": {"lane": "fast", "required_seats": ["kimi"]},
+        }
+        with tempfile.TemporaryDirectory() as td, \
+                mock.patch.object(concilium_run.concilium_runtime, "run_concilium_adapter", return_value=preview) as adapter, \
+                contextlib.redirect_stdout(io.StringIO()):
+            rc = concilium_run.main(["--repo", td, "--task", "Fix one typo.", "--live", "--print-route"])
+
+        self.assertEqual(rc, 0)
+        adapter.assert_called_once()
+        params = adapter.call_args.args[0]
+        self.assertEqual(params["mode"], "preview")
+        self.assertTrue(params["live"])
+        self.assertTrue(params["print_route"])
+
     def test_blocked_cli_exits_three(self):
         result = {"status": "blocked", "guard": {"status": "blocked"}}
         with tempfile.TemporaryDirectory() as td, \

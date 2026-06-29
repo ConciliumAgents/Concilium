@@ -24,7 +24,7 @@ def run_concilium(
     mode: str | None = None,
     confirmation: dict | None = None,
 ) -> dict:
-    selected_mode = mode or ("preview" if dry_run or print_route else "live_run")
+    selected_mode = "preview" if dry_run or print_route else mode or "live_run"
     params = {
         "repo": str(repo),
         "task": task,
@@ -74,7 +74,7 @@ def main(argv: list[str] | None = None) -> int:
         signals = json.loads(args.signals_json) if args.signals_json else None
         confirmation = json.loads(args.confirmation_json) if args.confirmation_json else None
         mode = args.mode or ("live_run" if args.live else "preview")
-        if args.dry_run:
+        if args.dry_run or args.print_route:
             mode = "preview"
         params = {
             "repo": args.repo,

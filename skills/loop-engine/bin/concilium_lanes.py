@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import contextlib
 import json
 import os
 import re
@@ -27,6 +28,21 @@ def _load_bin_module(name: str, filename: str):
 
 
 review_lane_module = _load_bin_module("review_lane", "review-lane.py")
+
+
+@contextlib.contextmanager
+def _scoped_env(updates: dict[str, str]):
+    sentinel = object()
+    previous = {key: os.environ.get(key, sentinel) for key in updates}
+    os.environ.update({key: str(value) for key, value in updates.items()})
+    try:
+        yield
+    finally:
+        for key, old_value in previous.items():
+            if old_value is sentinel:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = str(old_value)
 
 
 def _slug(text: str, n: int = 24) -> str:
@@ -74,31 +90,33 @@ def run_fast_lane(
     env["LOOP_SEAT_TIMEOUT"] = str(timeout)
     env["LOOP_ARCHIVE"] = "0"
 
-    rc, out = _run_bin([str(BIN / "roundtable-init.sh"), str(repo_path), task], env, timeout)
-    if rc != 0:
-        raise RuntimeError(out.strip() or "roundtable-init.sh failed")
-    conductor.write_roster(str(repo_path), seats=[agent], seat_models=seat_models or {})
-    refresh_rc, refresh_out = _run_bin([str(BIN / "kb-refresh.sh"), str(repo_path), test_cmd], env, timeout)
-    if refresh_rc != 0:
-        raise RuntimeError(refresh_out.strip() or "kb-refresh.sh failed")
+    scoped = {key: env[key] for key in ("LOOP_SESSION", "LOOP_SEAT_TIMEOUT", "LOOP_ARCHIVE")}
+    with _scoped_env(scoped):
+        rc, out = _run_bin([str(BIN / "roundtable-init.sh"), str(repo_path), task], env, timeout)
+        if rc != 0:
+            raise RuntimeError(out.strip() or "roundtable-init.sh failed")
+        conductor.write_roster(str(repo_path), seats=[agent], seat_models=seat_models or {})
+        refresh_rc, refresh_out = _run_bin([str(BIN / "kb-refresh.sh"), str(repo_path), test_cmd], env, timeout)
+        if refresh_rc != 0:
+            raise RuntimeError(refresh_out.strip() or "kb-refresh.sh failed")
 
-    script = BIN / f"seat-{agent}.sh"
-    proc = process_runner.run_process_group(
-        [str(script), str(repo_path), "exec", task],
-        cwd=BIN,
-        env=env,
-        timeout=timeout,
-    )
-    verify_rc, verify_out = _run_shell(test_cmd, repo_path, timeout)
-    agent_rc = int(proc["returncode"])
-    return {
-        "status": "ran",
-        "lane": "fast",
-        "agent": agent,
-        "returncode": agent_rc if agent_rc != 0 else verify_rc,
-        "agent_output": str(proc["output"])[-4000:],
-        "verify": {"returncode": verify_rc, "output": verify_out[-4000:]},
-    }
+        script = BIN / f"seat-{agent}.sh"
+        proc = process_runner.run_process_group(
+            [str(script), str(repo_path), "exec", task],
+            cwd=BIN,
+            env=env,
+            timeout=timeout,
+        )
+        verify_rc, verify_out = _run_shell(test_cmd, repo_path, timeout)
+        agent_rc = int(proc["returncode"])
+        return {
+            "status": "ran",
+            "lane": "fast",
+            "agent": agent,
+            "returncode": agent_rc if agent_rc != 0 else verify_rc,
+            "agent_output": str(proc["output"])[-4000:],
+            "verify": {"returncode": verify_rc, "output": verify_out[-4000:]},
+        }
 
 
 def run_review_lane(repo: str | Path, task: str, test_cmd: str, config: dict, timeout: int) -> dict:

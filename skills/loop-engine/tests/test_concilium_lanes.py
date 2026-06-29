@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import pathlib
 import tempfile
 import unittest
@@ -16,6 +17,9 @@ spec.loader.exec_module(concilium_lanes)
 
 
 class ConciliumLanesTests(unittest.TestCase):
+    def _successful_process(self, *args, **kwargs):
+        return {"returncode": 0, "output": "", "timed_out": False, "duration_seconds": 0.0}
+
     def test_roundtable_lane_passes_seat_models_to_conductor(self):
         config = {
             "seat_models": {
@@ -37,6 +41,30 @@ class ConciliumLanesTests(unittest.TestCase):
         self.assertEqual(result, {"status": "ran", "lane": "roundtable", "returncode": 0})
         run.assert_called_once()
         self.assertEqual(run.call_args.kwargs["seat_models"], config["seat_models"])
+
+    def test_fast_lane_roster_write_uses_fast_session_and_restores_environment(self):
+        captured_env = {}
+
+        def capture_roster_env(*args, **kwargs):
+            captured_env["LOOP_SESSION"] = os.environ.get("LOOP_SESSION")
+            captured_env["LOOP_SEAT_TIMEOUT"] = os.environ.get("LOOP_SEAT_TIMEOUT")
+            captured_env["LOOP_ARCHIVE"] = os.environ.get("LOOP_ARCHIVE")
+            return ["kimi"]
+
+        with tempfile.TemporaryDirectory() as td, \
+                mock.patch.dict(os.environ, {}, clear=True), \
+                mock.patch.object(concilium_lanes.process_runner, "run_process_group", side_effect=self._successful_process), \
+                mock.patch.object(concilium_lanes.conductor, "write_roster", side_effect=capture_roster_env):
+            result = concilium_lanes.run_fast_lane(td, "Design the adapter.", "true", "kimi", timeout=12)
+
+            self.assertNotIn("LOOP_SESSION", os.environ)
+            self.assertNotIn("LOOP_SEAT_TIMEOUT", os.environ)
+            self.assertNotIn("LOOP_ARCHIVE", os.environ)
+
+        self.assertEqual(result["status"], "ran")
+        self.assertEqual(captured_env["LOOP_SESSION"], "fast-Design-the-adapter")
+        self.assertEqual(captured_env["LOOP_SEAT_TIMEOUT"], "12")
+        self.assertEqual(captured_env["LOOP_ARCHIVE"], "0")
 
 
 if __name__ == "__main__":
