@@ -48,7 +48,7 @@ def is_stale(record, now=None):
     if stale_after <= 0:
         return False
 
-    return checked_at + datetime.timedelta(seconds=stale_after) < now
+    return checked_at + datetime.timedelta(seconds=stale_after) <= now
 
 
 def _required_seats(preview):
@@ -128,11 +128,14 @@ def confirmation_payload(preview):
 
 
 def _confirmation_matches(preview, confirmation):
-    if not confirmation or not confirmation.get("accepted"):
+    if not confirmation or confirmation.get("accepted") is not True:
         return False
     expected = confirmation_payload(preview)
+    expected_request_fingerprint = expected["request_fingerprint"]
+    if not expected_request_fingerprint:
+        return False
     return (
-        str(confirmation.get("request_fingerprint", "")) == expected["request_fingerprint"]
+        str(confirmation.get("request_fingerprint", "")) == expected_request_fingerprint
         and str(confirmation.get("confirmation_fingerprint", "")) == expected["confirmation_fingerprint"]
     )
 
