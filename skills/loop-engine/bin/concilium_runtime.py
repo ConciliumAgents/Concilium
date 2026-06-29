@@ -128,3 +128,23 @@ def request_fingerprint(request: dict) -> str:
     payload = {key: request.get(key) for key in FINGERPRINT_KEYS}
     encoded = json.dumps(payload, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def attach_guard(preview: dict, confirmation: dict | None = None) -> dict:
+    try:
+        import budget_guard
+    except ModuleNotFoundError as e:
+        if e.name != "budget_guard":
+            raise
+        import importlib.util
+
+        module_path = Path(__file__).resolve().parent / "budget_guard.py"
+        spec = importlib.util.spec_from_file_location("budget_guard", module_path)
+        budget_guard = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(budget_guard)
+
+    guard = budget_guard.evaluate_budget_guard(preview, mode=preview.get("mode", "preview"), confirmation=confirmation)
+    result = dict(preview)
+    result["guard"] = guard
+    return result
