@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="loop-token" content="__LOOP_TOKEN__">
-<title>Concilium · Loop Engine</title>
+<title>Concilium Debug Console</title>
 <style>
   :root{--bg:#0f1420;--card:#1a2030;--line:#2a3344;--fg:#e6edf3;--dim:#8b98a9;--cyan:#39c5cf;--green:#3fb950;--red:#f85149;--yellow:#d29922;}
   *{box-sizing:border-box}
@@ -44,12 +44,15 @@
   .hide{display:none}
   .hint{font-size:11px;color:var(--dim);margin-top:6px}
   .err{color:var(--red)}
+  .debuggrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:10px}
+  .debugfield{background:#0c111b;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:12px}
+  .debugfield .k{color:var(--dim);font-size:11px}.debugfield .v{display:block;color:var(--fg);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;overflow-wrap:anywhere}
 </style>
 </head>
 <body>
 <header>
-  <h1>Concilium · Loop Engine</h1>
-  <span class="sub">本地 127.0.0.1 · 预检 lane、席位与容量，再进入圆桌执行</span>
+  <h1>Concilium Debug Console</h1>
+  <span class="sub">本地 127.0.0.1 · runtime adapter 预检 lane、席位与容量，再进入执行</span>
 </header>
 <main>
   <!-- 配置区 -->
@@ -83,6 +86,12 @@
       <button class="ghost" id="refresh">↻ 重新探测座位</button>
     </div>
     <div class="hint" id="routepreview">填写任务后可预检 lane 和席位状态。</div>
+    <div class="debuggrid" id="debugfields">
+      <div class="debugfield"><span class="k">route.lane</span><span class="v" data-dbg="route_lane">-</span></div>
+      <div class="debugfield"><span class="k">preflight.status</span><span class="v" data-dbg="preflight_status">-</span></div>
+      <div class="debugfield"><span class="k">guard.status</span><span class="v" data-dbg="guard_status">-</span></div>
+      <div class="debugfield"><span class="k">request_fingerprint</span><span class="v" data-dbg="request_fingerprint">-</span></div>
+    </div>
     <div class="hint err" id="formerr"></div>
   </section>
 
@@ -95,7 +104,7 @@
       <button class="ghost" id="back">← 新一次</button>
     </div>
     <div class="seats" id="boardseats"></div>
-    <label style="margin-top:14px">会议日志</label>
+    <label style="margin-top:14px">Debug Console 事件日志</label>
     <div id="log"></div>
     <label style="margin-top:14px">各座位发言（点开看完整产出）</label>
     <div id="transcripts"></div>
@@ -198,6 +207,7 @@ function clearPreview(){
   preflightBlocked = false;
   $("#run").disabled = false;
   $("#routepreview").textContent = "填写任务后可预检 lane 和席位状态。";
+  setDebugFields({});
 }
 
 function applyCapacity(capacity){
@@ -208,6 +218,16 @@ function applyCapacity(capacity){
       el.textContent = `capacity: ${item.status}${pct}`;
     }
   });
+}
+
+function setDebugFields(data){
+  const route = data.route || {};
+  const pre = data.preflight || {};
+  const guard = data.guard || {};
+  document.querySelector('[data-dbg="route_lane"]').textContent = route.lane || "-";
+  document.querySelector('[data-dbg="preflight_status"]').textContent = pre.status || "-";
+  document.querySelector('[data-dbg="guard_status"]').textContent = guard.status || "-";
+  document.querySelector('[data-dbg="request_fingerprint"]').textContent = data.request_fingerprint || "-";
 }
 
 async function runPreflight(){
@@ -222,6 +242,7 @@ async function runPreflight(){
     });
     const data = await r.json();
     if(!r.ok || data.error){ throw new Error(data.error || `HTTP ${r.status}`); }
+    setDebugFields(data);
     applyCapacity(data.capacity);
     const route = data.route || {};
     const pre = data.preflight || {};
