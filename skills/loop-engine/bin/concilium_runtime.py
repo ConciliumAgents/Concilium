@@ -21,7 +21,37 @@ FINGERPRINT_KEYS = (
 
 
 def _bool(value: object) -> bool:
-    return bool(value) and str(value).lower() not in {"0", "false", "no", "off"}
+    return bool(value) and str(value).strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _normalize_seat_models(value: object) -> dict:
+    seat_models = {}
+    for seat, config in dict(value or {}).items():
+        if isinstance(config, dict):
+            normalized = {}
+            for key in ("provider", "model"):
+                if key in config:
+                    normalized[key] = str(config[key] or "")
+            seat_models[str(seat)] = normalized
+        else:
+            model = str(config or "").strip()
+            if model:
+                seat_models[str(seat)] = {"model": model}
+    return seat_models
+
+
+def _select_timeout(params: dict) -> int:
+    if "timeout" in params and params.get("timeout") is not None:
+        timeout_value = params.get("timeout")
+    elif "seat_timeout" in params and params.get("seat_timeout") is not None:
+        timeout_value = params.get("seat_timeout")
+    else:
+        timeout_value = 300
+
+    timeout = int(timeout_value)
+    if timeout <= 0:
+        raise ValueError("timeout must be positive")
+    return timeout
 
 
 def normalize_request(params: dict) -> dict:
@@ -42,7 +72,7 @@ def normalize_request(params: dict) -> dict:
 
     overlay = {
         "seats": list(params.get("seats") or []),
-        "seat_models": dict(params.get("seat_models") or {}),
+        "seat_models": _normalize_seat_models(params.get("seat_models")),
         "fast_agent": str(params.get("fast_agent") or "").strip(),
         "review_executor": str(params.get("review_executor") or "").strip(),
         "review_reviewer": str(params.get("review_reviewer") or "").strip(),
@@ -51,9 +81,7 @@ def normalize_request(params: dict) -> dict:
         "max_iters": params.get("max_iters"),
     }
 
-    timeout = int(params.get("timeout") or params.get("seat_timeout") or 300)
-    if timeout <= 0:
-        raise ValueError("timeout must be positive")
+    timeout = _select_timeout(params)
 
     return {
         "repo": str(repo),
