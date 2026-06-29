@@ -91,6 +91,18 @@ Minimum setup questions:
 
 The UI should make lane choice visible before execution and let users override it per task.
 
+## Implemented Router Contract
+
+The Phase 3 router is a pure decision layer. It receives task signals and effective config, then returns a selected lane, required seats, and a human-readable reason. It does not start agents, probe providers, or mutate files.
+
+Current rules:
+
+- Fast Lane: low risk, one file or smaller, clear task, not security-sensitive.
+- Review Lane: bounded medium-risk tasks, especially config, routing, or evaluation changes.
+- Roundtable Lane: ambiguous, security-sensitive, architecture, migration, high-impact, or four-or-more-file tasks.
+
+Preflight is applied after routing. A blocked required seat must surface as a blocked decision for the selected lane; the router must not silently change Review Lane to Fast Lane to work around a missing reviewer.
+
 ## Measurement Requirements
 
 Every Roundtable Lane run should record per-seat timing so future optimization decisions are based on direct evidence, not file timestamp inference.
