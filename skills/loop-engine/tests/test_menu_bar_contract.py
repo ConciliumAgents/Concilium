@@ -105,6 +105,23 @@ class MenuBarContractTests(unittest.TestCase):
         self.assertEqual(model["seat_capacity"], [])
         self.assertEqual(model["execution_snapshot"]["active_seat"], "")
 
+    def test_view_model_uses_run_fingerprint_for_confirmation(self):
+        menu_bar_view_model = load_module("menu_bar_view_model", VIEW_MODEL)
+        fixture = self.fixture("active_fast.json")
+        fixture["preflight"]["request_fingerprint"] = "preview-fingerprint"
+        fixture["preflight"]["run_request_fingerprint"] = "live-fingerprint"
+        fixture["preflight"]["run_guard"] = {
+            "status": "confirmation_required",
+            "reason": "limited capacity",
+            "confirmation_payload": {"request_fingerprint": "live-fingerprint"},
+        }
+
+        model = menu_bar_view_model.build_popover_model(**fixture)
+
+        self.assertEqual(model["active_decision"]["request_fingerprint"], "live-fingerprint")
+        self.assertTrue(model["primary_action"]["requires_confirmation"])
+        self.assertFalse(model["primary_action"]["enabled"])
+
     def test_contract_doc_mentions_token_loader_and_effective_config_envelope(self):
         text = (ROOT / "docs" / "loop-engine" / "concilium-menu-bar-contract.md").read_text(encoding="utf-8")
 

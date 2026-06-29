@@ -56,7 +56,7 @@ def build_popover_model(status: dict, effective_config: dict, preflight: dict, e
             "preflight_status": preflight_status.get("status", ""),
             "guard_status": guard_status,
             "required_seats": list(route.get("required_seats") or []),
-            "request_fingerprint": preflight.get("request_fingerprint", ""),
+            "request_fingerprint": preflight.get("run_request_fingerprint") or preflight.get("request_fingerprint", ""),
         },
         "verdict": {
             "kind": "blocked" if blocked else "ready",
