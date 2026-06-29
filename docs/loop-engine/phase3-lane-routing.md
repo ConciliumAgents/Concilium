@@ -103,6 +103,14 @@ Current rules:
 
 Preflight is applied after routing. A blocked required seat must surface as a blocked decision for the selected lane; the router must not silently change Review Lane to Fast Lane to work around a missing reviewer.
 
+## Smoke Matrix
+
+`skills/loop-engine/bin/smoke-concilium-phase3.sh` verifies the routed dry-run path against three representative prompts:
+
+- clear one-file typo fix -> Fast Lane;
+- bounded config/routing change -> Review Lane;
+- security-sensitive migration across modules -> Roundtable Lane.
+
 ## Measurement Requirements
 
 Every Roundtable Lane run should record per-seat timing so future optimization decisions are based on direct evidence, not file timestamp inference.
