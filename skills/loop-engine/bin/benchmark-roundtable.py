@@ -105,13 +105,31 @@ def changed_files(repo: Path) -> list[str]:
     return sorted({*(x for x in tracked.splitlines() if x), *(x for x in untracked.splitlines() if x)})
 
 
+def changed_files_since(repo: Path, base_ref: str) -> list[str]:
+    rc, tracked = run_cmd(["git", "diff", "--name-only", base_ref], repo)
+    rc2, untracked = run_cmd(["git", "ls-files", "--others", "--exclude-standard"], repo)
+    if rc != 0 or rc2 != 0:
+        return []
+    return sorted({*(x for x in tracked.splitlines() if x), *(x for x in untracked.splitlines() if x)})
+
+
 def diff_stat(repo: Path) -> str:
     rc, out = run_cmd(["git", "diff", "--stat", "HEAD"], repo)
     return out.strip() if rc == 0 else ""
 
 
+def diff_stat_since(repo: Path, base_ref: str) -> str:
+    rc, out = run_cmd(["git", "diff", "--stat", base_ref], repo)
+    return out.strip() if rc == 0 else ""
+
+
 def diff_patch(repo: Path) -> str:
     rc, out = run_cmd(["git", "diff", "HEAD"], repo)
+    return out if rc == 0 else ""
+
+
+def diff_patch_since(repo: Path, base_ref: str) -> str:
+    rc, out = run_cmd(["git", "diff", base_ref], repo)
     return out if rc == 0 else ""
 
 
@@ -219,6 +237,7 @@ def lane_record(
     started: float,
     returncode: int,
     harness_commit: str,
+    task_base_commit: str,
 ) -> dict:
     elapsed = time.time() - started
     timeout_count = 1 if returncode == 124 else 0
@@ -230,8 +249,8 @@ def lane_record(
         "verify_passed": verify["passed"],
         "review_verdict": "",
         "blocking_findings": [] if status == "PASS" else [f"lane returncode {returncode} or verify failed"],
-        "changed_files": changed_files(repo),
-        "diff_summary": diff_stat(repo),
+        "changed_files": changed_files_since(repo, task_base_commit),
+        "diff_summary": diff_stat_since(repo, task_base_commit),
         "contract_valid": True,
         "human_quality_score": None,
         "wall_seconds": round(elapsed, 3),
@@ -241,12 +260,19 @@ def lane_record(
         "manual_intervention_count": 0,
         "artifact_count": 4,
         "harness_commit": harness_commit,
-        "task_base_commit": git_output(["rev-parse", "HEAD"], repo),
+        "task_base_commit": task_base_commit,
         "report_path": str(lane_dir / "report.md"),
     }
 
 
-def run_kimi_lane(task: dict, lane_repo: Path, lane_dir: Path, timeout: int, harness_commit: str) -> dict:
+def run_kimi_lane(
+    task: dict,
+    lane_repo: Path,
+    lane_dir: Path,
+    timeout: int,
+    harness_commit: str,
+    task_base_commit: str,
+) -> dict:
     started = time.time()
     prompt = lane_prompt(task, "baseline-kimi")
     rc, out = run_cmd(["kimi", "-p", prompt], lane_repo, timeout=timeout)
@@ -255,15 +281,24 @@ def run_kimi_lane(task: dict, lane_repo: Path, lane_dir: Path, timeout: int, har
     report_src = lane_repo / "BENCHMARK-REPORT.md"
     report_text = report_src.read_text(encoding="utf-8", errors="replace") if report_src.exists() else out[-4000:]
     write_text(lane_dir / "report.md", report_text)
-    write_text(lane_dir / "diff.patch", diff_patch(lane_repo))
+    write_text(lane_dir / "diff.patch", diff_patch_since(lane_repo, task_base_commit))
     write_text(lane_dir / "test-results.txt", json.dumps(verify, ensure_ascii=False, indent=2))
     status = "PASS" if rc == 0 and verify["passed"] else "ERR"
-    record = lane_record(task, "baseline-kimi", status, verify, lane_repo, lane_dir, started, rc, harness_commit)
+    record = lane_record(
+        task, "baseline-kimi", status, verify, lane_repo, lane_dir, started, rc, harness_commit, task_base_commit
+    )
     write_json(lane_dir / "result.json", record)
     return record
 
 
-def run_roundtable_lane(task: dict, lane_repo: Path, lane_dir: Path, timeout: int, harness_commit: str) -> dict:
+def run_roundtable_lane(
+    task: dict,
+    lane_repo: Path,
+    lane_dir: Path,
+    timeout: int,
+    harness_commit: str,
+    task_base_commit: str,
+) -> dict:
     started = time.time()
     session = f"phase2-{task['id']}"
     env = dict(os.environ)
@@ -314,10 +349,12 @@ def run_roundtable_lane(task: dict, lane_repo: Path, lane_dir: Path, timeout: in
     )
     report_text = report_path.read_text(encoding="utf-8", errors="replace") if report_path.exists() else out[-4000:]
     write_text(lane_dir / "report.md", report_text)
-    write_text(lane_dir / "diff.patch", diff_patch(lane_repo))
+    write_text(lane_dir / "diff.patch", diff_patch_since(lane_repo, task_base_commit))
     write_text(lane_dir / "test-results.txt", json.dumps(verify, ensure_ascii=False, indent=2))
     status = "PASS" if rc == 0 and verify["passed"] else "ERR"
-    record = lane_record(task, "roundtable", status, verify, lane_repo, lane_dir, started, rc, harness_commit)
+    record = lane_record(
+        task, "roundtable", status, verify, lane_repo, lane_dir, started, rc, harness_commit, task_base_commit
+    )
     write_json(lane_dir / "result.json", record)
     return record
 
@@ -375,15 +412,16 @@ def run_dry_batch(tasks: list[dict], run_dir: Path, harness_commit: str, task_ba
 
 def run_live_batch(tasks: list[dict], run_dir: Path, stamp: str, base_ref: str, timeout: int, harness_commit: str) -> list[dict]:
     records = []
+    task_base_commit = git_output(["rev-parse", base_ref])
     for task in tasks:
         for lane in LANES:
             lane_repo = lane_worktree_path(stamp, lane, task["id"])
             lane_dir = run_dir / f"task-{task['id']}" / lane
             create_lane_worktree(lane_repo, base_ref)
             if lane == "baseline-kimi":
-                records.append(run_kimi_lane(task, lane_repo, lane_dir, timeout, harness_commit))
+                records.append(run_kimi_lane(task, lane_repo, lane_dir, timeout, harness_commit, task_base_commit))
             else:
-                records.append(run_roundtable_lane(task, lane_repo, lane_dir, timeout, harness_commit))
+                records.append(run_roundtable_lane(task, lane_repo, lane_dir, timeout, harness_commit, task_base_commit))
     return records
 
 

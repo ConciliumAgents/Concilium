@@ -101,6 +101,46 @@ class BenchmarkRoundtableTests(unittest.TestCase):
         self.assertIn("# Loop Engine Phase 2 Benchmark Summary", summary)
         self.assertIn("| sample | PASS | PASS | tie |", summary)
 
+    def test_lane_record_uses_original_base_after_lane_commits(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo = pathlib.Path(td)
+            subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.DEVNULL)
+            (repo / "tracked.txt").write_text("base\n", encoding="utf-8")
+            subprocess.run(["git", "add", "tracked.txt"], cwd=repo, check=True)
+            subprocess.run(
+                ["git", "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "base"],
+                cwd=repo,
+                check=True,
+                stdout=subprocess.DEVNULL,
+            )
+            base = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+            (repo / "tracked.txt").write_text("base\nchanged\n", encoding="utf-8")
+            subprocess.run(["git", "add", "tracked.txt"], cwd=repo, check=True)
+            subprocess.run(
+                ["git", "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "lane change"],
+                cwd=repo,
+                check=True,
+                stdout=subprocess.DEVNULL,
+            )
+
+            task = sample_task()
+            record = benchmark.lane_record(
+                task=task,
+                lane="roundtable",
+                status="PASS",
+                verify={"passed": True},
+                repo=repo,
+                lane_dir=pathlib.Path(td) / "lane",
+                started=0,
+                returncode=0,
+                harness_commit="harness",
+                task_base_commit=base,
+            )
+
+        self.assertEqual(record["task_base_commit"], base)
+        self.assertIn("tracked.txt", record["changed_files"])
+        self.assertIn("tracked.txt", record["diff_summary"])
+
 
 if __name__ == "__main__":
     unittest.main()
