@@ -136,7 +136,7 @@ class BudgetGuardTests(unittest.TestCase):
         preview.pop("request_fingerprint")
         preview["capacity"] = [record("kimi", "ok"), record("hermes", "unknown")]
         preview["preflight"] = {"status": "warn", "required_seats": ["kimi", "hermes"], "blocking_seats": [], "warnings": ["hermes unknown"]}
-        required = budget_guard.evaluate_budget_guard(preview, mode="live_run")
+        payload = budget_guard.confirmation_payload(preview)
 
         result = budget_guard.evaluate_budget_guard(
             preview,
@@ -144,12 +144,24 @@ class BudgetGuardTests(unittest.TestCase):
             confirmation={
                 "accepted": True,
                 "request_fingerprint": "",
-                "confirmation_fingerprint": required["confirmation_payload"]["confirmation_fingerprint"],
+                "confirmation_fingerprint": payload["confirmation_fingerprint"],
             },
         )
 
         self.assertEqual(result["status"], "blocked")
         self.assertEqual(result["reason"], "confirmation does not match current preflight")
+
+    def test_missing_request_fingerprint_blocks_initial_confirmation_flow(self):
+        preview = dict(BASE_PREVIEW)
+        preview.pop("request_fingerprint")
+        preview["capacity"] = [record("kimi", "ok"), record("hermes", "unknown")]
+        preview["preflight"] = {"status": "warn", "required_seats": ["kimi", "hermes"], "blocking_seats": [], "warnings": ["hermes unknown"]}
+
+        result = budget_guard.evaluate_budget_guard(preview, mode="live_run")
+
+        self.assertEqual(result["status"], "blocked")
+        self.assertFalse(result["requires_confirmation"])
+        self.assertEqual(result["reason"], "missing request fingerprint for confirmation")
 
     def test_mismatched_confirmation_blocks(self):
         preview = dict(BASE_PREVIEW)

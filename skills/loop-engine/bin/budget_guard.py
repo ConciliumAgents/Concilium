@@ -200,6 +200,11 @@ def evaluate_budget_guard(preview, mode, confirmation=None, now=None):
     if confirmation is not None:
         return result
 
+    if not str(preview.get("request_fingerprint", "")):
+        result["status"] = "blocked"
+        result["reason"] = "missing request fingerprint for confirmation"
+        return result
+
     result["status"] = "confirmation_required"
     result["requires_confirmation"] = True
     if stale_hard_seats:
