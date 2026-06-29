@@ -80,6 +80,7 @@ class ConciliumRuntimeRequestTests(unittest.TestCase):
 
         effective = concilium_runtime.apply_request_overlay(BASE_CONFIG, request)
 
+        self.assertEqual(request["timeout"], 77)
         self.assertEqual(BASE_CONFIG["lanes"]["fast"]["default_single_agent"], "kimi")
         self.assertEqual(effective["lanes"]["fast"]["default_single_agent"], "codex")
         self.assertEqual(effective["lanes"]["review"]["default_review_executor"], "codex")
