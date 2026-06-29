@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Summarize Loop Engine Phase 2 benchmark records."""
+"""Summarize Loop Engine benchmark records."""
 from __future__ import annotations
 
 import argparse
@@ -32,6 +32,23 @@ def classify_pair(kimi: dict | None, roundtable: dict | None) -> tuple[str, str]
     return "inconclusive", "neither lane passed quality checks"
 
 
+def classify_task(kimi: dict | None, review: dict | None, roundtable: dict | None) -> tuple[str, str]:
+    lanes = [
+        ("kimi", kimi),
+        ("review", review),
+        ("roundtable", roundtable),
+    ]
+    passed_lanes = [name for name, item in lanes if passed(item)]
+    if len(passed_lanes) == 3:
+        return "tie", "all lanes passed quality checks"
+    if len(passed_lanes) == 1:
+        lane = passed_lanes[0]
+        return f"{lane}_better", f"{lane} passed while other lanes did not"
+    if len(passed_lanes) > 1:
+        return "partial_tie", ", ".join(passed_lanes) + " passed quality checks"
+    return "inconclusive", "no lane passed quality checks"
+
+
 def group_by_task(records: list[dict]) -> dict[str, dict[str, dict]]:
     grouped: dict[str, dict[str, dict]] = defaultdict(dict)
     for record in records:
@@ -43,18 +60,20 @@ def build_summary(records: list[dict]) -> str:
     grouped = group_by_task(records)
     counts = defaultdict(int)
     lines = [
-        "# Loop Engine Phase 2 Benchmark Summary",
+        "# Loop Engine Benchmark Summary",
         "",
-        "| Task | Kimi | Roundtable | Outcome | Reason |",
-        "|---|---|---|---|---|",
+        "| Task | Kimi | Review | Roundtable | Outcome | Reason |",
+        "|---|---|---|---|---|---|",
     ]
     for task_id in sorted(grouped):
         kimi = grouped[task_id].get("baseline-kimi")
+        review = grouped[task_id].get("review")
         roundtable = grouped[task_id].get("roundtable")
-        outcome, reason = classify_pair(kimi, roundtable)
+        outcome, reason = classify_task(kimi, review, roundtable)
         counts[outcome] += 1
         lines.append(
             f"| {task_id} | {kimi.get('status', '-') if kimi else '-'} | "
+            f"{review.get('status', '-') if review else '-'} | "
             f"{roundtable.get('status', '-') if roundtable else '-'} | {outcome} | {reason} |"
         )
     lines += [
@@ -62,14 +81,14 @@ def build_summary(records: list[dict]) -> str:
         "## Counts",
         "",
     ]
-    for key in ("roundtable_better", "kimi_better", "tie", "inconclusive"):
+    for key in ("roundtable_better", "review_better", "kimi_better", "tie", "partial_tie", "inconclusive"):
         lines.append(f"- {key}: {counts[key]}")
     lines.append("")
     return "\n".join(lines)
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Summarize Loop Engine Phase 2 benchmark records.")
+    parser = argparse.ArgumentParser(description="Summarize Loop Engine benchmark records.")
     parser.add_argument("--records", required=True)
     parser.add_argument("--out", default="")
     args = parser.parse_args(argv)

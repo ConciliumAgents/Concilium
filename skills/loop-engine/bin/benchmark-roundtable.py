@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Phase 2 benchmark runner for Loop Engine vs Kimi baseline."""
+"""Benchmark runner for Loop Engine lane comparisons."""
 from __future__ import annotations
 
 import argparse
@@ -34,7 +34,19 @@ REQUIRED_TASK_KEYS = {
     "quality_checks",
     "expected_artifacts",
 }
-LANES = ("baseline-kimi", "roundtable")
+LANES = ("baseline-kimi", "review", "roundtable")
+
+
+def load_bin_module(name: str, filename: str):
+    module_path = ROOT / "skills" / "loop-engine" / "bin" / filename
+    spec = importlib.util.spec_from_file_location(name, module_path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+review_lane = load_bin_module("review_lane", "review-lane.py")
 
 
 def run_cmd(args: list[str], cwd: Path, timeout: int = 60) -> tuple[int, str]:
@@ -186,7 +198,7 @@ def create_lane_worktree(path: Path, base_ref: str) -> None:
 
 def lane_prompt(task: dict, lane: str) -> str:
     return "\n".join([
-        f"You are running the Loop Engine Phase 2 benchmark lane: {lane}.",
+        f"You are running the Loop Engine benchmark lane: {lane}.",
         "Work only inside the current git worktree.",
         "Do not publish, delete external data, change global config, or spend money.",
         "Allowed paths:",
@@ -204,7 +216,7 @@ def classify_changed_files(task: dict, files: list[str]) -> dict:
     allowed_target_changes = []
     violations = []
     for file in files:
-        if file == "BENCHMARK-REPORT.md":
+        if file == "BENCHMARK-REPORT.md" or file.startswith(".roundtable/"):
             continue
         if any(file == item or file.startswith(item.rstrip("/") + "/") for item in allowed):
             allowed_target_changes.append(file)
@@ -271,6 +283,9 @@ def lane_record(
     returncode: int,
     harness_commit: str,
     task_base_commit: str,
+    review_verdict: str = "",
+    retries: int = 0,
+    agent_calls: int = 1,
 ) -> dict:
     elapsed = time.time() - started
     timeout_count = 1 if returncode == 124 else 0
@@ -286,9 +301,18 @@ def lane_record(
         findings.append("no changed files inside allowed_paths")
     if violations:
         findings.append("changed files outside allowed_paths: " + ", ".join(violations))
+    if review_verdict == "BLOCK":
+        findings.append("review blocked")
+    elif review_verdict == "ERR":
+        findings.append("review errored")
     if returncode != 0:
         warnings.append(f"lane returncode {returncode}")
-    quality_passed = verify["passed"] and bool(allowed_target_changes) and not violations
+    quality_passed = (
+        verify["passed"]
+        and bool(allowed_target_changes)
+        and not violations
+        and review_verdict not in ("BLOCK", "ERR")
+    )
     final_status = "PASS" if quality_passed else "ERR"
     return {
         "task_id": task["id"],
@@ -296,7 +320,7 @@ def lane_record(
         "lane": lane,
         "status": final_status,
         "verify_passed": verify["passed"],
-        "review_verdict": "",
+        "review_verdict": review_verdict,
         "blocking_findings": findings,
         "warnings": warnings,
         "changed_files": changed,
@@ -306,8 +330,8 @@ def lane_record(
         "human_quality_score": None,
         "wall_seconds": round(elapsed, 3),
         "lane_returncode": returncode,
-        "retries": 0,
-        "agent_calls": 1,
+        "retries": retries,
+        "agent_calls": agent_calls,
         "timeout_count": timeout_count,
         "manual_intervention_count": 0,
         "artifact_count": 4,
@@ -338,6 +362,65 @@ def run_kimi_lane(
     status = "PASS" if rc == 0 and verify["passed"] else "ERR"
     record = lane_record(
         task, "baseline-kimi", status, verify, lane_repo, lane_dir, started, rc, harness_commit, task_base_commit
+    )
+    write_json(lane_dir / "result.json", record)
+    return record
+
+
+def run_review_lane(
+    task: dict,
+    lane_repo: Path,
+    lane_dir: Path,
+    timeout: int,
+    harness_commit: str,
+    task_base_commit: str,
+) -> dict:
+    started = time.time()
+    session = f"phase3-review-{task['id']}"
+    test_cmd = " && ".join(task["verify_cmds"])
+    result = review_lane.run_review_lane(
+        lane_repo,
+        task["prompt"],
+        test_cmd=test_cmd,
+        executor="kimi",
+        reviewer="hermes",
+        repair_limit=1,
+        timeout=timeout,
+        session=session,
+    )
+    rc = int(result.get("returncode", 1))
+    verify = run_verify_cmds(lane_repo, task["verify_cmds"], timeout=timeout)
+    session_path = Path(result.get("session_path") or lane_repo / ".roundtable" / "sessions" / session)
+    report_path = session_path / "KB" / "report.md"
+    run_cmd(
+        [
+            "python3",
+            str(ROOT / "skills" / "loop-engine" / "bin" / "report-session.py"),
+            str(session_path),
+            "--out",
+            str(report_path),
+        ],
+        ROOT,
+        timeout=60,
+    )
+    report_text = report_path.read_text(encoding="utf-8", errors="replace") if report_path.exists() else ""
+    write_text(lane_dir / "report.md", report_text)
+    write_text(lane_dir / "diff.patch", diff_patch_since(lane_repo, task_base_commit))
+    write_text(lane_dir / "test-results.txt", json.dumps(verify, ensure_ascii=False, indent=2))
+    record = lane_record(
+        task,
+        "review",
+        "PASS" if rc == 0 and verify["passed"] else "ERR",
+        verify,
+        lane_repo,
+        lane_dir,
+        started,
+        rc,
+        harness_commit,
+        task_base_commit,
+        review_verdict=str(result.get("review_verdict", "")),
+        retries=int(result.get("retries", 0)),
+        agent_calls=int(result.get("agent_calls", 0)),
     )
     write_json(lane_dir / "result.json", record)
     return record
@@ -473,6 +556,8 @@ def run_live_batch(tasks: list[dict], run_dir: Path, stamp: str, base_ref: str, 
             create_lane_worktree(lane_repo, base_ref)
             if lane == "baseline-kimi":
                 records.append(run_kimi_lane(task, lane_repo, lane_dir, timeout, harness_commit, task_base_commit))
+            elif lane == "review":
+                records.append(run_review_lane(task, lane_repo, lane_dir, timeout, harness_commit, task_base_commit))
             else:
                 records.append(run_roundtable_lane(task, lane_repo, lane_dir, timeout, harness_commit, task_base_commit))
     return records
@@ -496,12 +581,12 @@ def write_summary(run_dir: Path) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run Loop Engine Phase 2 benchmark tasks.")
+    parser = argparse.ArgumentParser(description="Run Loop Engine benchmark tasks.")
     parser.add_argument("--tasks", default=str(DEFAULT_TASKS))
     parser.add_argument("--out", default="")
     parser.add_argument("--base", default="loop-engine-mvp-v0.1-internal")
     parser.add_argument("--dry-run", action="store_true", help="Write comparable records without live agent calls.")
-    parser.add_argument("--live", action="store_true", help="Run live Kimi and roundtable lanes in isolated worktrees.")
+    parser.add_argument("--live", action="store_true", help="Run live benchmark lanes in isolated worktrees.")
     parser.add_argument("--task-id", default="", help="Limit execution to one task id.")
     parser.add_argument("--timeout", type=int, default=300)
     parser.add_argument("--force-dirty-base", action="store_true", help="Allow live runs from a dirty harness repo.")

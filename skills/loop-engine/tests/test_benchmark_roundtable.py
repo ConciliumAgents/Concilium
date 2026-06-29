@@ -7,6 +7,7 @@ import pathlib
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
@@ -93,13 +94,23 @@ class BenchmarkRoundtableTests(unittest.TestCase):
             task = sample_task()
             records = [
                 benchmark.run_dry_lane(task, "baseline-kimi", run_dir / "task-sample" / "baseline-kimi", "h", "b"),
+                benchmark.run_dry_lane(task, "review", run_dir / "task-sample" / "review", "h", "b"),
                 benchmark.run_dry_lane(task, "roundtable", run_dir / "task-sample" / "roundtable", "h", "b"),
             ]
             benchmark.write_records(run_dir / "records.jsonl", records)
             benchmark.write_summary(run_dir)
             summary = (run_dir / "summary.md").read_text(encoding="utf-8")
-        self.assertIn("# Loop Engine Phase 2 Benchmark Summary", summary)
-        self.assertIn("| sample | PASS | PASS | tie |", summary)
+        self.assertIn("# Loop Engine Benchmark Summary", summary)
+        self.assertIn("| sample | PASS | PASS | PASS | tie |", summary)
+
+    def test_dry_batch_includes_review_lane(self):
+        with tempfile.TemporaryDirectory() as td:
+            records = benchmark.run_dry_batch([sample_task()], pathlib.Path(td), "harness", "base")
+
+        self.assertEqual(
+            sorted(record["lane"] for record in records),
+            ["baseline-kimi", "review", "roundtable"],
+        )
 
     def test_lane_record_uses_original_base_after_lane_commits(self):
         with tempfile.TemporaryDirectory() as td:
@@ -244,6 +255,90 @@ class BenchmarkRoundtableTests(unittest.TestCase):
         self.assertEqual(record["lane_returncode"], 1)
         self.assertEqual(record["allowed_target_changes"], ["docs/example.md"])
         self.assertIn("lane returncode 1", record["warnings"])
+
+    def test_lane_record_blocks_when_review_verdict_blocks(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo = pathlib.Path(td)
+            subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.DEVNULL)
+            (repo / "docs").mkdir()
+            (repo / "docs" / "example.md").write_text("base\n", encoding="utf-8")
+            subprocess.run(["git", "add", "docs/example.md"], cwd=repo, check=True)
+            subprocess.run(
+                ["git", "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "base"],
+                cwd=repo,
+                check=True,
+                stdout=subprocess.DEVNULL,
+            )
+            base = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+            (repo / "docs" / "example.md").write_text("base\nchanged\n", encoding="utf-8")
+
+            record = benchmark.lane_record(
+                task=sample_task(),
+                lane="review",
+                status="PASS",
+                verify={"passed": True},
+                repo=repo,
+                lane_dir=pathlib.Path(td) / "lane",
+                started=0,
+                returncode=2,
+                harness_commit="harness",
+                task_base_commit=base,
+                review_verdict="BLOCK",
+            )
+
+        self.assertEqual(record["status"], "ERR")
+        self.assertEqual(record["review_verdict"], "BLOCK")
+        self.assertIn("review blocked", record["blocking_findings"])
+
+    def test_run_review_lane_delegates_to_review_runner(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo = pathlib.Path(td) / "repo"
+            lane_dir = pathlib.Path(td) / "lane"
+            repo.mkdir()
+            subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.DEVNULL)
+            (repo / "docs").mkdir()
+            (repo / "docs" / "example.md").write_text("base\n", encoding="utf-8")
+            subprocess.run(["git", "add", "docs/example.md"], cwd=repo, check=True)
+            subprocess.run(
+                ["git", "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "base"],
+                cwd=repo,
+                check=True,
+                stdout=subprocess.DEVNULL,
+            )
+            base = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+
+            def fake_review_runner(repo_arg, task_arg, **kwargs):
+                self.assertEqual(pathlib.Path(repo_arg), repo)
+                self.assertEqual(task_arg, sample_task()["prompt"])
+                (repo / "docs" / "example.md").write_text("base\nchanged\n", encoding="utf-8")
+                session = repo / ".roundtable" / "sessions" / "review-sample"
+                (session / "KB").mkdir(parents=True)
+                (session / "KB" / "report.md").write_text("# report\n", encoding="utf-8")
+                return {
+                    "returncode": 0,
+                    "review_verdict": "PASS",
+                    "retries": 1,
+                    "agent_calls": 4,
+                    "session_path": str(session),
+                }
+
+            with mock.patch.object(benchmark.review_lane, "run_review_lane", side_effect=fake_review_runner):
+                record = benchmark.run_review_lane(
+                    sample_task(),
+                    repo,
+                    lane_dir,
+                    timeout=30,
+                    harness_commit="harness",
+                    task_base_commit=base,
+                )
+
+            self.assertEqual(record["lane"], "review")
+            self.assertEqual(record["status"], "PASS")
+            self.assertEqual(record["review_verdict"], "PASS")
+            self.assertEqual(record["retries"], 1)
+            self.assertEqual(record["agent_calls"], 4)
+            self.assertTrue((lane_dir / "result.json").is_file())
+            self.assertTrue((lane_dir / "report.md").is_file())
 
     def test_roundtable_env_disables_archive_for_benchmark(self):
         env = benchmark.roundtable_env(timeout=123, session="phase2-sample")

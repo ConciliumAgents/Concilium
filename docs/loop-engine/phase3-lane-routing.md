@@ -104,3 +104,9 @@ For small tasks, Fast Lane should remain the default.
 Review Lane is the main product gap to validate next: it may capture much of the quality benefit of independent review while avoiding the full planner cost.
 
 Roundtable Lane should be reserved for tasks where planning, adversarial review, and multi-round convergence are themselves part of the value.
+
+## Execution Order
+
+The first Phase 3 implementation slice should validate Review Lane before adding capacity detection, router automation, or broad product renaming.
+
+That order follows the Phase 2 evidence: the full roundtable is reliable but expensive, so the highest-value hypothesis is whether executor-plus-reviewer can preserve quality at lower latency. Capacity detection and preflight remain important, but they should start with a small provider-signal spike after Review Lane is measurable.

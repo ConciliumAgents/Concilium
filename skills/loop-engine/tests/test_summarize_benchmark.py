@@ -51,14 +51,33 @@ class SummarizeBenchmarkTests(unittest.TestCase):
         self.assertEqual(outcome, "tie")
         self.assertIn("both passed", reason)
 
+    def test_classify_review_better_when_only_review_passes(self):
+        kimi = record("x", "baseline-kimi", "ERR", 10)
+        review = record("x", "review", "PASS", 15)
+        rt = record("x", "roundtable", "ERR", 20)
+        outcome, reason = summary.classify_task(kimi, review, rt)
+        self.assertEqual(outcome, "review_better")
+        self.assertIn("review passed", reason)
+
     def test_build_summary_groups_records_by_task(self):
         records = [
             record("x", "baseline-kimi", "PASS", 10),
+            record("x", "review", "PASS", 15),
             record("x", "roundtable", "PASS", 20),
         ]
         report = summary.build_summary(records)
-        self.assertIn("# Loop Engine Phase 2 Benchmark Summary", report)
-        self.assertIn("| x | PASS | PASS | tie |", report)
+        self.assertIn("# Loop Engine Benchmark Summary", report)
+        self.assertIn("| Task | Kimi | Review | Roundtable | Outcome | Reason |", report)
+        self.assertIn("| x | PASS | PASS | PASS | tie |", report)
+
+    def test_summary_counts_review_better(self):
+        records = [
+            record("x", "baseline-kimi", "ERR", 10),
+            record("x", "review", "PASS", 15),
+            record("x", "roundtable", "ERR", 20),
+        ]
+        report = summary.build_summary(records)
+        self.assertIn("- review_better: 1", report)
 
     def test_main_writes_summary_file(self):
         with tempfile.TemporaryDirectory() as td:
@@ -67,6 +86,7 @@ class SummarizeBenchmarkTests(unittest.TestCase):
             records_path.write_text(
                 "\n".join(json.dumps(r) for r in [
                     record("x", "baseline-kimi", "PASS", 10),
+                    record("x", "review", "PASS", 15),
                     record("x", "roundtable", "PASS", 20),
                 ]) + "\n",
                 encoding="utf-8",
