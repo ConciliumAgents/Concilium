@@ -47,7 +47,7 @@ Add tests to `skills/loop-engine/tests/test_benchmark_roundtable.py`:
             record = benchmark.lane_record(
                 task=sample_task(),
                 lane="roundtable",
-                status="PASS",
+                status="ERR",
                 verify={"passed": True},
                 repo=repo,
                 lane_dir=pathlib.Path(td) / "lane",

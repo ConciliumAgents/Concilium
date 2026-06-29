@@ -174,6 +174,83 @@ class BenchmarkRoundtableTests(unittest.TestCase):
         )
         self.assertEqual(violations, ["roundtable-memory/LESSONS.md"])
 
+    def test_allowed_target_changes_exclude_lane_report(self):
+        task = sample_task()
+        result = benchmark.classify_changed_files(task, ["BENCHMARK-REPORT.md", "docs/example.md"])
+        self.assertEqual(result["allowed_target_changes"], ["docs/example.md"])
+        self.assertEqual(result["violations"], [])
+
+    def test_lane_record_blocks_when_only_lane_report_changed(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo = pathlib.Path(td)
+            subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.DEVNULL)
+            (repo / "base.txt").write_text("base\n", encoding="utf-8")
+            subprocess.run(["git", "add", "base.txt"], cwd=repo, check=True)
+            subprocess.run(
+                ["git", "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "base"],
+                cwd=repo,
+                check=True,
+                stdout=subprocess.DEVNULL,
+            )
+            base = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+            (repo / "BENCHMARK-REPORT.md").write_text("report\n", encoding="utf-8")
+
+            record = benchmark.lane_record(
+                task=sample_task(),
+                lane="roundtable",
+                status="PASS",
+                verify={"passed": True},
+                repo=repo,
+                lane_dir=pathlib.Path(td) / "lane",
+                started=0,
+                returncode=0,
+                harness_commit="harness",
+                task_base_commit=base,
+            )
+
+        self.assertEqual(record["status"], "ERR")
+        self.assertIn("no changed files inside allowed_paths", record["blocking_findings"])
+
+    def test_lane_record_warns_but_passes_on_nonzero_returncode_with_verified_target_diff(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo = pathlib.Path(td)
+            subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.DEVNULL)
+            (repo / "docs").mkdir()
+            (repo / "docs" / "example.md").write_text("base\n", encoding="utf-8")
+            subprocess.run(["git", "add", "docs/example.md"], cwd=repo, check=True)
+            subprocess.run(
+                ["git", "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "base"],
+                cwd=repo,
+                check=True,
+                stdout=subprocess.DEVNULL,
+            )
+            base = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+            (repo / "docs" / "example.md").write_text("base\nchanged\n", encoding="utf-8")
+
+            record = benchmark.lane_record(
+                task=sample_task(),
+                lane="roundtable",
+                status="ERR",
+                verify={"passed": True},
+                repo=repo,
+                lane_dir=pathlib.Path(td) / "lane",
+                started=0,
+                returncode=1,
+                harness_commit="harness",
+                task_base_commit=base,
+            )
+
+        self.assertEqual(record["status"], "PASS")
+        self.assertEqual(record["lane_returncode"], 1)
+        self.assertEqual(record["allowed_target_changes"], ["docs/example.md"])
+        self.assertIn("lane returncode 1", record["warnings"])
+
+    def test_roundtable_env_disables_archive_for_benchmark(self):
+        env = benchmark.roundtable_env(timeout=123, session="phase2-sample")
+        self.assertEqual(env["LOOP_SESSION"], "phase2-sample")
+        self.assertEqual(env["LOOP_SEAT_TIMEOUT"], "123")
+        self.assertEqual(env["LOOP_ARCHIVE"], "0")
+
 
 if __name__ == "__main__":
     unittest.main()

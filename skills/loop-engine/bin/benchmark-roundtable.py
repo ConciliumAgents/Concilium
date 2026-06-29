@@ -199,16 +199,33 @@ def lane_prompt(task: dict, lane: str) -> str:
     ])
 
 
-def path_violations(task: dict, files: list[str]) -> list[str]:
+def classify_changed_files(task: dict, files: list[str]) -> dict:
     allowed = task.get("allowed_paths", [])
+    allowed_target_changes = []
     violations = []
     for file in files:
         if file == "BENCHMARK-REPORT.md":
             continue
         if any(file == item or file.startswith(item.rstrip("/") + "/") for item in allowed):
-            continue
-        violations.append(file)
-    return violations
+            allowed_target_changes.append(file)
+        else:
+            violations.append(file)
+    return {
+        "allowed_target_changes": sorted(allowed_target_changes),
+        "violations": sorted(violations),
+    }
+
+
+def path_violations(task: dict, files: list[str]) -> list[str]:
+    return classify_changed_files(task, files)["violations"]
+
+
+def roundtable_env(timeout: int, session: str) -> dict:
+    env = dict(os.environ)
+    env["LOOP_SESSION"] = session
+    env["LOOP_SEAT_TIMEOUT"] = str(timeout)
+    env["LOOP_ARCHIVE"] = "0"
+    return env
 
 
 def cleanup_kimi_session(output: str) -> None:
@@ -258,13 +275,21 @@ def lane_record(
     elapsed = time.time() - started
     timeout_count = 1 if returncode == 124 else 0
     changed = changed_files_since(repo, task_base_commit)
-    violations = path_violations(task, changed)
+    classification = classify_changed_files(task, changed)
+    allowed_target_changes = classification["allowed_target_changes"]
+    violations = classification["violations"]
     findings = []
-    if returncode != 0 or not verify["passed"]:
-        findings.append(f"lane returncode {returncode} or verify failed")
+    warnings = []
+    if not verify["passed"]:
+        findings.append("verify failed")
+    if not allowed_target_changes:
+        findings.append("no changed files inside allowed_paths")
     if violations:
         findings.append("changed files outside allowed_paths: " + ", ".join(violations))
-    final_status = "ERR" if status == "PASS" and violations else status
+    if returncode != 0:
+        warnings.append(f"lane returncode {returncode}")
+    quality_passed = verify["passed"] and bool(allowed_target_changes) and not violations
+    final_status = "PASS" if quality_passed else "ERR"
     return {
         "task_id": task["id"],
         "category": task.get("category", ""),
@@ -273,11 +298,14 @@ def lane_record(
         "verify_passed": verify["passed"],
         "review_verdict": "",
         "blocking_findings": findings,
+        "warnings": warnings,
         "changed_files": changed,
+        "allowed_target_changes": allowed_target_changes,
         "diff_summary": diff_stat_since(repo, task_base_commit),
         "contract_valid": True,
         "human_quality_score": None,
         "wall_seconds": round(elapsed, 3),
+        "lane_returncode": returncode,
         "retries": 0,
         "agent_calls": 1,
         "timeout_count": timeout_count,
@@ -325,9 +353,7 @@ def run_roundtable_lane(
 ) -> dict:
     started = time.time()
     session = f"phase2-{task['id']}"
-    env = dict(os.environ)
-    env["LOOP_SESSION"] = session
-    env["LOOP_SEAT_TIMEOUT"] = str(timeout)
+    env = roundtable_env(timeout, session)
     test_cmd = " && ".join(task["verify_cmds"])
     cmd = [
         "python3",
@@ -407,11 +433,14 @@ def run_dry_lane(task: dict, lane: str, lane_dir: Path, harness_commit: str, tas
         "verify_passed": True,
         "review_verdict": "",
         "blocking_findings": [],
+        "warnings": [],
         "changed_files": [],
+        "allowed_target_changes": [],
         "diff_summary": "",
         "contract_valid": True,
         "human_quality_score": None,
         "wall_seconds": round(elapsed, 3),
+        "lane_returncode": 0,
         "retries": 0,
         "agent_calls": 0,
         "timeout_count": 0,
