@@ -82,6 +82,11 @@ class BenchmarkRoundtableTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 benchmark.ensure_clean_repo(repo, force=False)
 
+    def test_lane_worktree_path_is_under_phase2_worktrees(self):
+        path = benchmark.lane_worktree_path("run-1", "baseline-kimi", "sample")
+        self.assertIn("evals/loop-engine/phase2/worktrees", str(path))
+        self.assertTrue(str(path).endswith("run-1/baseline-kimi/sample"))
+
 
 if __name__ == "__main__":
     unittest.main()

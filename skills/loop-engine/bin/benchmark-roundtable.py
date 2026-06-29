@@ -5,6 +5,9 @@ from __future__ import annotations
 import argparse
 import datetime
 import json
+import os
+import re
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -20,6 +23,7 @@ def find_repo_root(start: Path) -> Path:
 ROOT = find_repo_root(Path(__file__).resolve())
 DEFAULT_TASKS = ROOT / "evals" / "loop-engine" / "phase2" / "tasks.json"
 RUNS_DIR = ROOT / "evals" / "loop-engine" / "phase2" / "runs"
+WORKTREES_DIR = ROOT / "evals" / "loop-engine" / "phase2" / "worktrees"
 REQUIRED_TASK_KEYS = {
     "id",
     "category",
@@ -33,15 +37,19 @@ LANES = ("baseline-kimi", "roundtable")
 
 
 def run_cmd(args: list[str], cwd: Path, timeout: int = 60) -> tuple[int, str]:
-    proc = subprocess.run(
-        args,
-        cwd=cwd,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        timeout=timeout,
-    )
-    return proc.returncode, proc.stdout or ""
+    try:
+        proc = subprocess.run(
+            args,
+            cwd=cwd,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=timeout,
+        )
+        return proc.returncode, proc.stdout or ""
+    except subprocess.TimeoutExpired as e:
+        out = (e.stdout or "") if isinstance(e.stdout, str) else ""
+        return 124, out + f"\n(timeout after {timeout}s)"
 
 
 def run_shell(cmd: str, cwd: Path, timeout: int) -> tuple[int, str]:
@@ -140,6 +148,179 @@ def write_text(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+def lane_worktree_path(stamp: str, lane: str, task_id: str) -> Path:
+    return WORKTREES_DIR / stamp / lane / task_id
+
+
+def create_lane_worktree(path: Path, base_ref: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        raise RuntimeError(f"lane worktree already exists: {path}")
+    rc, out = run_cmd(["git", "worktree", "add", "--detach", str(path), base_ref], ROOT, timeout=120)
+    if rc != 0:
+        raise RuntimeError(out.strip() or f"git worktree add failed: {path}")
+
+
+def lane_prompt(task: dict, lane: str) -> str:
+    return "\n".join([
+        f"You are running the Loop Engine Phase 2 benchmark lane: {lane}.",
+        "Work only inside the current git worktree.",
+        "Do not publish, delete external data, change global config, or spend money.",
+        "Allowed paths:",
+        *[f"- {p}" for p in task["allowed_paths"]],
+        "",
+        "Task:",
+        task["prompt"],
+        "",
+        "After changes, write a concise report to BENCHMARK-REPORT.md with what changed, verification, and risks.",
+    ])
+
+
+def cleanup_kimi_session(output: str) -> None:
+    matches = re.findall(r"session_[0-9a-f-]{30,}", output, flags=re.I)
+    if not matches:
+        return
+    sid = matches[-1]
+    idx = Path.home() / ".kimi-code" / "session_index.jsonl"
+    sroot = (Path.home() / ".kimi-code" / "sessions").resolve()
+    if not idx.exists():
+        return
+    keep: list[str] = []
+    removed = False
+    for line in idx.read_text(encoding="utf-8", errors="replace").splitlines():
+        if not line.strip():
+            continue
+        try:
+            data = json.loads(line)
+        except json.JSONDecodeError:
+            keep.append(line)
+            continue
+        if data.get("sessionId") == sid:
+            session_dir = Path(data.get("sessionDir", "")).expanduser().resolve()
+            if str(session_dir).startswith(str(sroot) + os.sep) and session_dir.is_dir():
+                shutil.rmtree(session_dir, ignore_errors=True)
+                removed = True
+            elif not str(session_dir).startswith(str(sroot) + os.sep):
+                keep.append(line)
+        else:
+            keep.append(line)
+    if removed:
+        idx.write_text("".join(item + "\n" for item in keep), encoding="utf-8")
+
+
+def lane_record(
+    task: dict,
+    lane: str,
+    status: str,
+    verify: dict,
+    repo: Path,
+    lane_dir: Path,
+    started: float,
+    returncode: int,
+    harness_commit: str,
+) -> dict:
+    elapsed = time.time() - started
+    timeout_count = 1 if returncode == 124 else 0
+    return {
+        "task_id": task["id"],
+        "category": task.get("category", ""),
+        "lane": lane,
+        "status": status,
+        "verify_passed": verify["passed"],
+        "review_verdict": "",
+        "blocking_findings": [] if status == "PASS" else [f"lane returncode {returncode} or verify failed"],
+        "changed_files": changed_files(repo),
+        "diff_summary": diff_stat(repo),
+        "contract_valid": True,
+        "human_quality_score": None,
+        "wall_seconds": round(elapsed, 3),
+        "retries": 0,
+        "agent_calls": 1,
+        "timeout_count": timeout_count,
+        "manual_intervention_count": 0,
+        "artifact_count": 4,
+        "harness_commit": harness_commit,
+        "task_base_commit": git_output(["rev-parse", "HEAD"], repo),
+        "report_path": str(lane_dir / "report.md"),
+    }
+
+
+def run_kimi_lane(task: dict, lane_repo: Path, lane_dir: Path, timeout: int, harness_commit: str) -> dict:
+    started = time.time()
+    prompt = lane_prompt(task, "baseline-kimi")
+    rc, out = run_cmd(["kimi", "-p", prompt], lane_repo, timeout=timeout)
+    cleanup_kimi_session(out)
+    verify = run_verify_cmds(lane_repo, task["verify_cmds"], timeout=timeout)
+    report_src = lane_repo / "BENCHMARK-REPORT.md"
+    report_text = report_src.read_text(encoding="utf-8", errors="replace") if report_src.exists() else out[-4000:]
+    write_text(lane_dir / "report.md", report_text)
+    write_text(lane_dir / "diff.patch", diff_patch(lane_repo))
+    write_text(lane_dir / "test-results.txt", json.dumps(verify, ensure_ascii=False, indent=2))
+    status = "PASS" if rc == 0 and verify["passed"] else "ERR"
+    record = lane_record(task, "baseline-kimi", status, verify, lane_repo, lane_dir, started, rc, harness_commit)
+    write_json(lane_dir / "result.json", record)
+    return record
+
+
+def run_roundtable_lane(task: dict, lane_repo: Path, lane_dir: Path, timeout: int, harness_commit: str) -> dict:
+    started = time.time()
+    session = f"phase2-{task['id']}"
+    env = dict(os.environ)
+    env["LOOP_SESSION"] = session
+    env["LOOP_SEAT_TIMEOUT"] = str(timeout)
+    test_cmd = " && ".join(task["verify_cmds"])
+    cmd = [
+        "python3",
+        str(ROOT / "skills" / "loop-engine" / "bin" / "conductor.py"),
+        "--repo",
+        str(lane_repo),
+        "--task",
+        task["prompt"],
+        "--test-cmd",
+        test_cmd,
+        "--max-iters",
+        "2",
+        "--seats",
+        "claude,hermes,kimi",
+    ]
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=ROOT,
+            env=env,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=timeout * 4,
+        )
+        rc, out = proc.returncode, proc.stdout or ""
+    except subprocess.TimeoutExpired as e:
+        out = (e.stdout or "") if isinstance(e.stdout, str) else ""
+        rc = 124
+    verify = run_verify_cmds(lane_repo, task["verify_cmds"], timeout=timeout)
+    session_path = lane_repo / ".roundtable" / "sessions" / session
+    report_path = session_path / "KB" / "report.md"
+    run_cmd(
+        [
+            "python3",
+            str(ROOT / "skills" / "loop-engine" / "bin" / "report-session.py"),
+            str(session_path),
+            "--out",
+            str(report_path),
+        ],
+        ROOT,
+        timeout=60,
+    )
+    report_text = report_path.read_text(encoding="utf-8", errors="replace") if report_path.exists() else out[-4000:]
+    write_text(lane_dir / "report.md", report_text)
+    write_text(lane_dir / "diff.patch", diff_patch(lane_repo))
+    write_text(lane_dir / "test-results.txt", json.dumps(verify, ensure_ascii=False, indent=2))
+    status = "PASS" if rc == 0 and verify["passed"] else "ERR"
+    record = lane_record(task, "roundtable", status, verify, lane_repo, lane_dir, started, rc, harness_commit)
+    write_json(lane_dir / "result.json", record)
+    return record
+
+
 def run_dry_lane(task: dict, lane: str, lane_dir: Path, harness_commit: str, task_base_commit: str) -> dict:
     started = time.time()
     lane_dir.mkdir(parents=True, exist_ok=True)
@@ -191,6 +372,20 @@ def run_dry_batch(tasks: list[dict], run_dir: Path, harness_commit: str, task_ba
     return records
 
 
+def run_live_batch(tasks: list[dict], run_dir: Path, stamp: str, base_ref: str, timeout: int, harness_commit: str) -> list[dict]:
+    records = []
+    for task in tasks:
+        for lane in LANES:
+            lane_repo = lane_worktree_path(stamp, lane, task["id"])
+            lane_dir = run_dir / f"task-{task['id']}" / lane
+            create_lane_worktree(lane_repo, base_ref)
+            if lane == "baseline-kimi":
+                records.append(run_kimi_lane(task, lane_repo, lane_dir, timeout, harness_commit))
+            else:
+                records.append(run_roundtable_lane(task, lane_repo, lane_dir, timeout, harness_commit))
+    return records
+
+
 def write_records(path: Path, records: list[dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as f:
@@ -204,24 +399,37 @@ def main() -> int:
     parser.add_argument("--out", default="")
     parser.add_argument("--base", default="loop-engine-mvp-v0.1-internal")
     parser.add_argument("--dry-run", action="store_true", help="Write comparable records without live agent calls.")
+    parser.add_argument("--live", action="store_true", help="Run live Kimi and roundtable lanes in isolated worktrees.")
+    parser.add_argument("--task-id", default="", help="Limit execution to one task id.")
+    parser.add_argument("--timeout", type=int, default=300)
+    parser.add_argument("--force-dirty-base", action="store_true", help="Allow live runs from a dirty harness repo.")
     args = parser.parse_args()
 
-    if not args.dry_run:
-        raise SystemExit("--dry-run is required until live lanes are implemented")
+    if args.dry_run == args.live:
+        raise SystemExit("choose exactly one of --dry-run or --live")
 
     tasks = load_tasks(Path(args.tasks))
+    if args.task_id:
+        tasks = [task for task in tasks if task["id"] == args.task_id]
+        if not tasks:
+            raise SystemExit(f"unknown task id: {args.task_id}")
     stamp = now_stamp()
     run_dir = Path(args.out).resolve() if args.out else output_path_for(stamp)
     harness_commit = git_output(["rev-parse", "HEAD"])
     task_base_commit = git_output(["rev-parse", args.base])
+    mode = "dry-run" if args.dry_run else "live"
     write_json(run_dir / "batch.json", {
         "stamp": stamp,
-        "mode": "dry-run",
+        "mode": mode,
         "harness_commit": harness_commit,
         "task_base_commit": task_base_commit,
         "task_count": len(tasks),
     })
-    records = run_dry_batch(tasks, run_dir, harness_commit, task_base_commit)
+    if args.dry_run:
+        records = run_dry_batch(tasks, run_dir, harness_commit, task_base_commit)
+    else:
+        ensure_clean_repo(ROOT, force=args.force_dirty_base)
+        records = run_live_batch(tasks, run_dir, stamp, args.base, args.timeout, harness_commit)
     write_records(run_dir / "records.jsonl", records)
     print(run_dir)
     return 0
