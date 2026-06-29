@@ -7,13 +7,13 @@ import contextlib
 import json
 import os
 import re
-import subprocess
 import sys
 from pathlib import Path
 
 BIN = Path(__file__).resolve().parent
 sys.path.insert(0, str(BIN))
 import conductor  # noqa: E402
+import process_runner  # noqa: E402
 
 
 def _slug(text: str, n: int = 24) -> str:
@@ -34,20 +34,8 @@ def review_lane_env(timeout: int, session: str) -> dict:
 
 
 def run_cmd(args: list[str], cwd: Path, env: dict, timeout: int) -> tuple[int, str]:
-    try:
-        proc = subprocess.run(
-            args,
-            cwd=cwd,
-            env=env,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            timeout=timeout,
-        )
-        return proc.returncode, proc.stdout or ""
-    except subprocess.TimeoutExpired as e:
-        out = (e.stdout or "") if isinstance(e.stdout, str) else ""
-        return 124, out + f"\n(timeout after {timeout}s)"
+    result = process_runner.run_process_group(args, cwd=cwd, env=env, timeout=timeout)
+    return int(result["returncode"]), str(result["output"])
 
 
 @contextlib.contextmanager
