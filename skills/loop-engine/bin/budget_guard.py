@@ -71,6 +71,10 @@ def _required_records(preview):
     return records, unresolved
 
 
+def _request_fingerprint(preview):
+    return str(preview.get("request_fingerprint") or "").strip()
+
+
 def _confirmation_fingerprint(payload):
     body = dict(payload)
     body.pop("confirmation_fingerprint", None)
@@ -111,7 +115,7 @@ def confirmation_payload(preview):
         })
 
     payload = {
-        "request_fingerprint": str(preview.get("request_fingerprint", "")),
+        "request_fingerprint": _request_fingerprint(preview),
         "selected_lane": str(route.get("lane", "")),
         "routing_reason": str(route.get("reason", "")),
         "required_seats": _required_seats(preview),
@@ -131,7 +135,7 @@ def _confirmation_matches(preview, confirmation):
     if not confirmation or confirmation.get("accepted") is not True:
         return False
     expected = confirmation_payload(preview)
-    expected_request_fingerprint = expected["request_fingerprint"]
+    expected_request_fingerprint = _request_fingerprint(preview)
     if not expected_request_fingerprint:
         return False
     return (
@@ -200,7 +204,7 @@ def evaluate_budget_guard(preview, mode, confirmation=None, now=None):
     if confirmation is not None:
         return result
 
-    if not str(preview.get("request_fingerprint", "")):
+    if not _request_fingerprint(preview):
         result["status"] = "blocked"
         result["reason"] = "missing request fingerprint for confirmation"
         return result
