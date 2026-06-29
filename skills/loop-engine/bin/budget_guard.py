@@ -8,6 +8,7 @@ import json
 
 BLOCKING_STATUSES = {"hard_exhausted", "unavailable"}
 WARNING_STATUSES = {"unknown", "soft_limited"}
+VALID_STATUSES = {"ok", "unknown", "soft_limited", "hard_exhausted", "unavailable"}
 
 
 def _parse_time(value):
@@ -75,11 +76,26 @@ def _request_fingerprint(preview):
     return str(preview.get("request_fingerprint") or "").strip()
 
 
+def _capacity_status(record):
+    status = str(record.get("status") or "unknown").strip().lower()
+    if status in VALID_STATUSES:
+        return status
+    return "unknown"
+
+
 def _confirmation_fingerprint(payload):
     body = dict(payload)
     body.pop("confirmation_fingerprint", None)
     encoded = json.dumps(body, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _files_may_be_modified(preview, request):
+    if "files_may_be_modified" in preview:
+        return bool(preview.get("files_may_be_modified"))
+    if "files_may_be_modified" in request:
+        return bool(request.get("files_may_be_modified"))
+    return preview.get("mode") == "live_run" or request.get("mode") == "live_run"
 
 
 def confirmation_payload(preview):
@@ -94,7 +110,7 @@ def confirmation_payload(preview):
             "seat": str(record.get("seat", "")),
             "provider": str(record.get("provider", "")),
             "model": str(record.get("model", "")),
-            "capacity_status": str(record.get("status", "unknown")),
+            "capacity_status": _capacity_status(record),
             "capacity_source": str(record.get("source", "")),
             "reason": reason,
             "capacity_reason": reason,
@@ -124,7 +140,7 @@ def confirmation_payload(preview):
             "expected_max_agent_calls",
             request.get("expected_max_agent_calls", route.get("expected_max_agent_calls")),
         ),
-        "files_may_be_modified": bool(preview.get("files_may_be_modified", request.get("files_may_be_modified", False))),
+        "files_may_be_modified": _files_may_be_modified(preview, request),
         "global_config_may_be_touched": False,
     }
     payload["confirmation_fingerprint"] = _confirmation_fingerprint(payload)
@@ -155,8 +171,8 @@ def evaluate_budget_guard(preview, mode, confirmation=None, now=None):
 
     for record in records:
         seat = str(record.get("seat", ""))
-        status = str(record.get("status", "unknown"))
-        reason = str(record.get("reason", "") or status)
+        status = _capacity_status(record)
+        reason = str(record.get("reason", "") or status).strip() or status
 
         if status == "unavailable":
             blocking_seats.append(seat)

@@ -94,6 +94,31 @@ class BudgetGuardTests(unittest.TestCase):
         self.assertIn("confirmation_fingerprint", result["confirmation_payload"])
         self.assertEqual(result["confirmation_payload"]["seats"][1]["reason"], "unknown")
 
+    def test_malformed_capacity_status_requires_confirmation(self):
+        cases = (None, "", "   ", "weird")
+        for status in cases:
+            with self.subTest(status=status):
+                preview = dict(BASE_PREVIEW)
+                preview["capacity"] = [record("kimi", "ok"), record("hermes", status)]
+                preview["preflight"] = {"status": "warn", "required_seats": ["kimi", "hermes"], "blocking_seats": [], "warnings": []}
+
+                result = budget_guard.evaluate_budget_guard(preview, mode="live_run")
+
+                self.assertEqual(result["status"], "confirmation_required")
+                self.assertTrue(result["requires_confirmation"])
+                self.assertEqual(result["reason"], "live run requires confirmation for limited capacity")
+                self.assertEqual(result["confirmation_payload"]["seats"][1]["capacity_status"], "unknown")
+
+    def test_live_confirmation_payload_defaults_files_may_be_modified(self):
+        preview = dict(BASE_PREVIEW)
+        preview["mode"] = "live_run"
+        preview["capacity"] = [record("kimi", "ok"), record("hermes", "unknown")]
+        preview["preflight"] = {"status": "warn", "required_seats": ["kimi", "hermes"], "blocking_seats": [], "warnings": ["hermes unknown"]}
+
+        result = budget_guard.evaluate_budget_guard(preview, mode="live_run")
+
+        self.assertTrue(result["confirmation_payload"]["files_may_be_modified"])
+
     def test_matching_confirmation_allows_warn_live_run(self):
         preview = dict(BASE_PREVIEW)
         preview["capacity"] = [record("kimi", "ok"), record("hermes", "soft_limited")]
