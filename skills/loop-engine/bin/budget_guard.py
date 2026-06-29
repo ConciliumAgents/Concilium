@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import datetime
+import hashlib
+import json
 
 BLOCKING_STATUSES = {"hard_exhausted", "unavailable"}
 WARNING_STATUSES = {"unknown", "soft_limited"}
@@ -69,6 +71,13 @@ def _required_records(preview):
     return records, unresolved
 
 
+def _confirmation_fingerprint(payload):
+    body = dict(payload)
+    body.pop("confirmation_fingerprint", None)
+    encoded = json.dumps(body, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
 def confirmation_payload(preview):
     route = preview.get("route") or {}
     request = preview.get("request") or {}
@@ -76,13 +85,15 @@ def confirmation_payload(preview):
 
     seats = []
     for record in records:
+        reason = str(record.get("reason", ""))
         seats.append({
             "seat": str(record.get("seat", "")),
             "provider": str(record.get("provider", "")),
             "model": str(record.get("model", "")),
             "capacity_status": str(record.get("status", "unknown")),
             "capacity_source": str(record.get("source", "")),
-            "capacity_reason": str(record.get("reason", "")),
+            "reason": reason,
+            "capacity_reason": reason,
             "checked_at": str(record.get("checked_at", "")),
             "reset_at": str(record.get("reset_at", "")),
         })
@@ -93,12 +104,13 @@ def confirmation_payload(preview):
             "model": "",
             "capacity_status": "missing",
             "capacity_source": "",
+            "reason": "missing required seat record",
             "capacity_reason": "missing required seat record",
             "checked_at": "",
             "reset_at": "",
         })
 
-    return {
+    payload = {
         "request_fingerprint": str(preview.get("request_fingerprint", "")),
         "selected_lane": str(route.get("lane", "")),
         "routing_reason": str(route.get("reason", "")),
@@ -111,13 +123,18 @@ def confirmation_payload(preview):
         "files_may_be_modified": bool(preview.get("files_may_be_modified", request.get("files_may_be_modified", False))),
         "global_config_may_be_touched": False,
     }
+    payload["confirmation_fingerprint"] = _confirmation_fingerprint(payload)
+    return payload
 
 
 def _confirmation_matches(preview, confirmation):
     if not confirmation or not confirmation.get("accepted"):
         return False
     expected = confirmation_payload(preview)
-    return str(confirmation.get("request_fingerprint", "")) == expected["request_fingerprint"]
+    return (
+        str(confirmation.get("request_fingerprint", "")) == expected["request_fingerprint"]
+        and str(confirmation.get("confirmation_fingerprint", "")) == expected["confirmation_fingerprint"]
+    )
 
 
 def evaluate_budget_guard(preview, mode, confirmation=None, now=None):
@@ -158,6 +175,8 @@ def evaluate_budget_guard(preview, mode, confirmation=None, now=None):
         "unresolved_seats": unresolved,
     }
 
+    if mode != "live_run":
+        return result
     if unresolved:
         result["status"] = "blocked"
         result["reason"] = "required seat records unresolved"
@@ -167,7 +186,7 @@ def evaluate_budget_guard(preview, mode, confirmation=None, now=None):
         result["reason"] = "required seats blocked by capacity"
         return result
 
-    if mode != "live_run" or not confirmation_seats:
+    if not confirmation_seats:
         return result
 
     if confirmation is not None and not _confirmation_matches(preview, confirmation):

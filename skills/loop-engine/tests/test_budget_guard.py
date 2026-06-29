@@ -45,6 +45,40 @@ class BudgetGuardTests(unittest.TestCase):
         self.assertEqual(result["status"], "allowed")
         self.assertFalse(result["requires_confirmation"])
 
+    def test_preview_retains_hard_block_details_without_blocking(self):
+        preview = dict(BASE_PREVIEW)
+        preview["capacity"] = [record("kimi", "ok"), record("hermes", "hard_exhausted")]
+        preview["preflight"] = {
+            "status": "blocked",
+            "required_seats": ["kimi", "hermes"],
+            "blocking_seats": ["hermes"],
+            "warnings": ["preview warning"],
+        }
+
+        result = budget_guard.evaluate_budget_guard(preview, mode="preview")
+
+        self.assertEqual(result["status"], "allowed")
+        self.assertFalse(result["requires_confirmation"])
+        self.assertIn("hermes", result["blocking_seats"])
+        self.assertIn("preview warning", result["warnings"])
+
+    def test_stub_run_retains_unresolved_details_without_blocking(self):
+        preview = dict(BASE_PREVIEW)
+        preview["capacity"] = [record("kimi", "ok")]
+        preview["preflight"] = {
+            "status": "blocked",
+            "required_seats": ["kimi", "hermes"],
+            "blocking_seats": ["hermes"],
+            "warnings": ["stub warning"],
+        }
+
+        result = budget_guard.evaluate_budget_guard(preview, mode="stub_run")
+
+        self.assertEqual(result["status"], "allowed")
+        self.assertFalse(result["requires_confirmation"])
+        self.assertIn("hermes", result["unresolved_seats"])
+        self.assertIn("stub warning", result["warnings"])
+
     def test_live_unknown_requires_per_run_confirmation(self):
         preview = dict(BASE_PREVIEW)
         preview["capacity"] = [record("kimi", "ok"), record("hermes", "unknown")]
@@ -56,6 +90,8 @@ class BudgetGuardTests(unittest.TestCase):
         self.assertTrue(result["requires_confirmation"])
         self.assertEqual(result["confirmation_payload"]["selected_lane"], "review")
         self.assertEqual(result["confirmation_payload"]["request_fingerprint"], "abc123")
+        self.assertIn("confirmation_fingerprint", result["confirmation_payload"])
+        self.assertEqual(result["confirmation_payload"]["seats"][1]["reason"], "unknown")
 
     def test_matching_confirmation_allows_warn_live_run(self):
         preview = dict(BASE_PREVIEW)
@@ -66,7 +102,11 @@ class BudgetGuardTests(unittest.TestCase):
         confirmed = budget_guard.evaluate_budget_guard(
             preview,
             mode="live_run",
-            confirmation={"accepted": True, "request_fingerprint": required["confirmation_payload"]["request_fingerprint"]},
+            confirmation={
+                "accepted": True,
+                "request_fingerprint": required["confirmation_payload"]["request_fingerprint"],
+                "confirmation_fingerprint": required["confirmation_payload"]["confirmation_fingerprint"],
+            },
         )
 
         self.assertEqual(confirmed["status"], "allowed")
@@ -80,6 +120,32 @@ class BudgetGuardTests(unittest.TestCase):
             preview,
             mode="live_run",
             confirmation={"accepted": True, "request_fingerprint": "old"},
+        )
+
+        self.assertEqual(result["status"], "blocked")
+        self.assertEqual(result["reason"], "confirmation does not match current preflight")
+
+    def test_confirmation_fingerprint_must_match_current_payload(self):
+        preview = dict(BASE_PREVIEW)
+        preview["capacity"] = [record("kimi", "ok"), record("hermes", "unknown")]
+        preview["preflight"] = {"status": "warn", "required_seats": ["kimi", "hermes"], "blocking_seats": [], "warnings": ["hermes unknown"]}
+        required = budget_guard.evaluate_budget_guard(preview, mode="live_run")
+
+        changed_record = record("hermes", "soft_limited")
+        changed_record["source"] = "fresh-fixture"
+        changed_record["reason"] = "soft now"
+        changed = dict(BASE_PREVIEW)
+        changed["capacity"] = [record("kimi", "ok"), changed_record]
+        changed["preflight"] = {"status": "warn", "required_seats": ["kimi", "hermes"], "blocking_seats": [], "warnings": ["hermes soft"]}
+
+        result = budget_guard.evaluate_budget_guard(
+            changed,
+            mode="live_run",
+            confirmation={
+                "accepted": True,
+                "request_fingerprint": required["confirmation_payload"]["request_fingerprint"],
+                "confirmation_fingerprint": required["confirmation_payload"]["confirmation_fingerprint"],
+            },
         )
 
         self.assertEqual(result["status"], "blocked")
