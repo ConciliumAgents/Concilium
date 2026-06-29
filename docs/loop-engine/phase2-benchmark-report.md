@@ -2,37 +2,49 @@
 
 ## Status
 
-Phase 2 benchmark harness is implemented. Full five-task live benchmark is not complete until all five task pairs are run or explicitly marked blocked.
+Phase 2 benchmark harness is implemented, and the first five-task live benchmark set is complete.
 
 ## Current Evidence
 
 - Dry benchmark mode produced comparable records and a summary for all five tasks.
-- One controlled live task pair was run for `seat_contract_bold_verdict_doc`.
-- The controlled live run used `loop-engine-mvp-v0.1-internal` as the task base commit.
+- Five controlled live task pairs were run against `loop-engine-mvp-v0.1-internal` as the task base commit.
+- Earlier live runs `20260629-100120-151785` and `20260629-100911-561616` were used to debug evidence capture and are not part of the comparison set below.
 
-## Live Pair Result
+## Live Pair Results
 
-Latest controlled run:
+Controlled run set:
 
-`evals/loop-engine/phase2/runs/20260629-101627-153963`
+- `evals/loop-engine/phase2/runs/20260629-101627-153963`
+- `evals/loop-engine/phase2/runs/20260629-103323-059207`
+- `evals/loop-engine/phase2/runs/20260629-103759-810520`
+- `evals/loop-engine/phase2/runs/20260629-104201-720231`
+- `evals/loop-engine/phase2/runs/20260629-104556-954014`
 
 | Task | Kimi | Roundtable | Outcome | Notes |
 |---|---|---|---|---|
 | seat_contract_bold_verdict_doc | PASS | ERR | kimi_better | Kimi completed in 11.83s. Roundtable verification passed but conductor returned ERR after 211.763s and changed `roundtable-memory/LESSONS.md` outside `allowed_paths`. |
+| report_session_block_test | PASS | ERR | kimi_better | Kimi completed in 30.312s and added the focused test. Roundtable verification passed but conductor returned ERR after 226.686s and changed `roundtable-memory/LESSONS.md` outside `allowed_paths`. |
+| eval_runner_missing_command_test | PASS | ERR | kimi_better | Kimi completed in 17.288s. Roundtable made the target test change and verification passed, but conductor returned ERR after 198.088s. |
+| dogfood_roundtable_report_note | PASS | ERR | kimi_better | Kimi completed in 13.187s and changed the positioning doc. Roundtable verification passed but conductor returned ERR after 196.393s with no target diff. |
+| dogfood_memory_boundary_note | PASS | ERR | kimi_better | Kimi completed in 12.734s and changed the positioning doc. Roundtable verification passed but conductor returned ERR after 231.35s with no target diff. |
+
+## Counts
+
+- roundtable_better: 0
+- kimi_better: 5
+- tie: 0
+- inconclusive: 0
 
 ## Interpretation
 
-This first live pair is evidence that the harness can compare the two lanes and catch quality issues beyond simple command success.
+This first complete live set is evidence that the harness can compare the two lanes and catch quality issues beyond simple command success.
 
-It is not evidence that Kimi is generally better than the roundtable. It only shows that, on this small docs task, Kimi finished faster and stayed closer to the requested path boundary. The roundtable did make the requested documentation change, but it also produced a failing conductor verdict and wrote extra lesson content outside the task's `allowed_paths`.
+It is evidence that the current roundtable lane is not yet competitive for these small, tightly scoped benchmark tasks. Kimi passed all five tasks, stayed within the target task changes apart from its lane-local `BENCHMARK-REPORT.md`, and completed each task in 11.83s to 30.312s.
 
-## Next Runs
+The roundtable lane had a consistent failure pattern: task verification often passed, but the conductor still returned ERR. Two tasks also wrote `roundtable-memory/LESSONS.md` outside `allowed_paths`, and two dogfood tasks produced no target diff. That means the immediate bottleneck is not raw ability to make a change; it is roundtable completion discipline, artifact boundaries, and conductor verdict handling.
 
-- `report_session_block_test`
-- `eval_runner_missing_command_test`
-- `dogfood_roundtable_report_note`
-- `dogfood_memory_boundary_note`
+This benchmark should still not be treated as a broad claim that single-agent Kimi is always better than Agent-level MoA. It shows that, for the current Phase 2 task shape, the roundtable workflow adds latency and failure modes that are not yet offset by better results.
 
-## Current Decision
+## Decision
 
-Continue Phase 2 data collection. Do not claim Agent-level MoA is better until all five task pairs are run or blocked with reasons.
+Do not promote Agent-level MoA as measurably better yet. The next engineering target should be reducing roundtable false ERR outcomes and preventing out-of-scope memory writes during benchmark lanes before running a second benchmark set.
