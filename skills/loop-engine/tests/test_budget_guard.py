@@ -119,6 +119,15 @@ class BudgetGuardTests(unittest.TestCase):
 
         self.assertTrue(result["confirmation_payload"]["files_may_be_modified"])
 
+    def test_live_guard_mode_defaults_files_may_be_modified_without_preview_mode(self):
+        preview = dict(BASE_PREVIEW)
+        preview["capacity"] = [record("kimi", "ok"), record("hermes", "unknown")]
+        preview["preflight"] = {"status": "warn", "required_seats": ["kimi", "hermes"], "blocking_seats": [], "warnings": ["hermes unknown"]}
+
+        result = budget_guard.evaluate_budget_guard(preview, mode="live_run")
+
+        self.assertTrue(result["confirmation_payload"]["files_may_be_modified"])
+
     def test_matching_confirmation_allows_warn_live_run(self):
         preview = dict(BASE_PREVIEW)
         preview["capacity"] = [record("kimi", "ok"), record("hermes", "soft_limited")]
@@ -266,6 +275,30 @@ class BudgetGuardTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "blocked")
         self.assertIn("hermes", result["blocking_seats"])
+
+    def test_route_required_seats_are_authoritative(self):
+        preview = dict(BASE_PREVIEW)
+        preview["route"] = {"lane": "review", "reason": "medium task", "required_seats": ["kimi", "hermes"]}
+        preview["preflight"] = {"status": "ok", "required_seats": ["kimi"], "blocking_seats": [], "warnings": []}
+        preview["capacity"] = [record("kimi", "ok"), record("hermes", "unavailable")]
+
+        result = budget_guard.evaluate_budget_guard(preview, mode="live_run")
+
+        self.assertEqual(result["status"], "blocked")
+        self.assertIn("hermes", result["blocking_seats"])
+        payload = budget_guard.confirmation_payload(preview, mode="live_run")
+        self.assertEqual(payload["required_seats"], ["kimi", "hermes"])
+
+    def test_route_required_missing_seat_blocks_as_unresolved(self):
+        preview = dict(BASE_PREVIEW)
+        preview["route"] = {"lane": "review", "reason": "medium task", "required_seats": ["kimi", "hermes"]}
+        preview["preflight"] = {"status": "ok", "required_seats": ["kimi"], "blocking_seats": [], "warnings": []}
+        preview["capacity"] = [record("kimi", "ok")]
+
+        result = budget_guard.evaluate_budget_guard(preview, mode="live_run")
+
+        self.assertEqual(result["status"], "blocked")
+        self.assertIn("hermes", result["unresolved_seats"])
 
     def test_stale_hard_exhausted_tiny_smoke_requires_confirmation(self):
         old = "2026-06-28T00:00:00Z"

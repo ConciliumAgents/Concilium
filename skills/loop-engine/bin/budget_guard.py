@@ -55,8 +55,14 @@ def is_stale(record, now=None):
 def _required_seats(preview):
     preflight = preview.get("preflight") or {}
     route = preview.get("route") or {}
-    required = preflight.get("required_seats") or route.get("required_seats") or []
-    return [str(seat) for seat in required]
+    required = []
+    seen = set()
+    for seat in list(route.get("required_seats") or []) + list(preflight.get("required_seats") or []):
+        seat_name = str(seat)
+        if seat_name not in seen:
+            required.append(seat_name)
+            seen.add(seat_name)
+    return required
 
 
 def _required_records(preview):
@@ -90,15 +96,15 @@ def _confirmation_fingerprint(payload):
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
-def _files_may_be_modified(preview, request):
+def _files_may_be_modified(preview, request, mode=None):
     if "files_may_be_modified" in preview:
         return bool(preview.get("files_may_be_modified"))
     if "files_may_be_modified" in request:
         return bool(request.get("files_may_be_modified"))
-    return preview.get("mode") == "live_run" or request.get("mode") == "live_run"
+    return mode == "live_run" or preview.get("mode") == "live_run" or request.get("mode") == "live_run"
 
 
-def confirmation_payload(preview):
+def confirmation_payload(preview, mode=None):
     route = preview.get("route") or {}
     request = preview.get("request") or {}
     records, unresolved = _required_records(preview)
@@ -140,17 +146,17 @@ def confirmation_payload(preview):
             "expected_max_agent_calls",
             request.get("expected_max_agent_calls", route.get("expected_max_agent_calls")),
         ),
-        "files_may_be_modified": _files_may_be_modified(preview, request),
+        "files_may_be_modified": _files_may_be_modified(preview, request, mode=mode),
         "global_config_may_be_touched": False,
     }
     payload["confirmation_fingerprint"] = _confirmation_fingerprint(payload)
     return payload
 
 
-def _confirmation_matches(preview, confirmation):
+def _confirmation_matches(preview, confirmation, mode=None):
     if not confirmation or confirmation.get("accepted") is not True:
         return False
-    expected = confirmation_payload(preview)
+    expected = confirmation_payload(preview, mode=mode)
     expected_request_fingerprint = _request_fingerprint(preview)
     if not expected_request_fingerprint:
         return False
@@ -212,7 +218,7 @@ def evaluate_budget_guard(preview, mode, confirmation=None, now=None):
     if not confirmation_seats:
         return result
 
-    if confirmation is not None and not _confirmation_matches(preview, confirmation):
+    if confirmation is not None and not _confirmation_matches(preview, confirmation, mode=mode):
         result["status"] = "blocked"
         result["reason"] = "confirmation does not match current preflight"
         return result
@@ -231,5 +237,5 @@ def evaluate_budget_guard(preview, mode, confirmation=None, now=None):
         result["reason"] = "stale hard_exhausted capacity requires confirmation"
     else:
         result["reason"] = "live run requires confirmation for limited capacity"
-    result["confirmation_payload"] = confirmation_payload(preview)
+    result["confirmation_payload"] = confirmation_payload(preview, mode=mode)
     return result
