@@ -35,6 +35,7 @@ REQUIRED_TASK_KEYS = {
     "expected_artifacts",
 }
 LANES = ("baseline-kimi", "review", "roundtable")
+ROUTER_LANE = "router"
 
 
 def load_bin_module(name: str, filename: str):
@@ -47,6 +48,7 @@ def load_bin_module(name: str, filename: str):
 
 
 review_lane = load_bin_module("review_lane", "review-lane.py")
+concilium_run = load_bin_module("concilium_run", "concilium-run.py")
 
 
 def run_cmd(args: list[str], cwd: Path, timeout: int = 60) -> tuple[int, str]:
@@ -492,6 +494,43 @@ def run_roundtable_lane(
     return record
 
 
+def run_router_lane(
+    task: dict,
+    lane_repo: Path,
+    lane_dir: Path,
+    timeout: int,
+    harness_commit: str,
+    task_base_commit: str,
+) -> dict:
+    started = time.time()
+    test_cmd = " && ".join(task["verify_cmds"])
+    result = concilium_run.run_concilium(
+        lane_repo,
+        task["prompt"],
+        test_cmd=test_cmd,
+        dry_run=False,
+        print_route=False,
+        timeout=timeout,
+    )
+    rc = int(result.get("returncode", 0 if result.get("status") == "preview" else 1))
+    if result.get("status") == "blocked":
+        rc = 3
+    verify = run_verify_cmds(lane_repo, task["verify_cmds"], timeout=timeout)
+    write_text(lane_dir / "report.md", json.dumps(result, ensure_ascii=False, indent=2))
+    write_text(lane_dir / "diff.patch", diff_patch_since(lane_repo, task_base_commit))
+    write_text(lane_dir / "test-results.txt", json.dumps(verify, ensure_ascii=False, indent=2))
+    status = "PASS" if rc == 0 and verify["passed"] else "ERR"
+    record = lane_record(
+        task, ROUTER_LANE, status, verify, lane_repo, lane_dir, started, rc, harness_commit, task_base_commit
+    )
+    route = result.get("route", {})
+    preflight = result.get("preflight", {})
+    record["selected_lane"] = route.get("lane", "")
+    record["preflight_status"] = preflight.get("status", result.get("status", ""))
+    write_json(lane_dir / "result.json", record)
+    return record
+
+
 def run_dry_lane(task: dict, lane: str, lane_dir: Path, harness_commit: str, task_base_commit: str) -> dict:
     started = time.time()
     lane_dir.mkdir(parents=True, exist_ok=True)
@@ -533,24 +572,52 @@ def run_dry_lane(task: dict, lane: str, lane_dir: Path, harness_commit: str, tas
         "task_base_commit": task_base_commit,
         "report_path": str(lane_dir / "report.md"),
     }
+    if lane == ROUTER_LANE:
+        result = concilium_run.run_concilium(
+            ROOT,
+            task["prompt"],
+            test_cmd=" && ".join(task["verify_cmds"]),
+            dry_run=True,
+            print_route=True,
+        )
+        route = result.get("route", {})
+        preflight = result.get("preflight", {})
+        record["selected_lane"] = route.get("lane", "")
+        record["preflight_status"] = preflight.get("status", "")
+        record["status"] = "ERR" if preflight.get("status") == "blocked" else "PASS"
+        write_text(lane_dir / "report.md", json.dumps(result, ensure_ascii=False, indent=2))
     write_json(lane_dir / "result.json", record)
     return record
 
 
-def run_dry_batch(tasks: list[dict], run_dir: Path, harness_commit: str, task_base_commit: str) -> list[dict]:
+def run_dry_batch(
+    tasks: list[dict],
+    run_dir: Path,
+    harness_commit: str,
+    task_base_commit: str,
+    lanes: tuple[str, ...] = LANES,
+) -> list[dict]:
     records = []
     for task in tasks:
-        for lane in LANES:
+        for lane in lanes:
             lane_dir = run_dir / f"task-{task['id']}" / lane
             records.append(run_dry_lane(task, lane, lane_dir, harness_commit, task_base_commit))
     return records
 
 
-def run_live_batch(tasks: list[dict], run_dir: Path, stamp: str, base_ref: str, timeout: int, harness_commit: str) -> list[dict]:
+def run_live_batch(
+    tasks: list[dict],
+    run_dir: Path,
+    stamp: str,
+    base_ref: str,
+    timeout: int,
+    harness_commit: str,
+    lanes: tuple[str, ...] = LANES,
+) -> list[dict]:
     records = []
     task_base_commit = resolve_commit(base_ref)
     for task in tasks:
-        for lane in LANES:
+        for lane in lanes:
             lane_repo = lane_worktree_path(stamp, lane, task["id"])
             lane_dir = run_dir / f"task-{task['id']}" / lane
             create_lane_worktree(lane_repo, base_ref)
@@ -558,8 +625,12 @@ def run_live_batch(tasks: list[dict], run_dir: Path, stamp: str, base_ref: str, 
                 records.append(run_kimi_lane(task, lane_repo, lane_dir, timeout, harness_commit, task_base_commit))
             elif lane == "review":
                 records.append(run_review_lane(task, lane_repo, lane_dir, timeout, harness_commit, task_base_commit))
-            else:
+            elif lane == "roundtable":
                 records.append(run_roundtable_lane(task, lane_repo, lane_dir, timeout, harness_commit, task_base_commit))
+            elif lane == ROUTER_LANE:
+                records.append(run_router_lane(task, lane_repo, lane_dir, timeout, harness_commit, task_base_commit))
+            else:
+                raise ValueError(f"unknown benchmark lane: {lane}")
     return records
 
 
@@ -590,6 +661,7 @@ def main() -> int:
     parser.add_argument("--task-id", default="", help="Limit execution to one task id.")
     parser.add_argument("--timeout", type=int, default=300)
     parser.add_argument("--force-dirty-base", action="store_true", help="Allow live runs from a dirty harness repo.")
+    parser.add_argument("--include-router", action="store_true", help="Add opt-in Concilium router lane.")
     args = parser.parse_args()
 
     if args.dry_run == args.live:
@@ -605,18 +677,20 @@ def main() -> int:
     harness_commit = git_output(["rev-parse", "HEAD"])
     task_base_commit = resolve_commit(args.base)
     mode = "dry-run" if args.dry_run else "live"
+    lanes = (*LANES, ROUTER_LANE) if args.include_router else LANES
     write_json(run_dir / "batch.json", {
         "stamp": stamp,
         "mode": mode,
+        "lanes": list(lanes),
         "harness_commit": harness_commit,
         "task_base_commit": task_base_commit,
         "task_count": len(tasks),
     })
     if args.dry_run:
-        records = run_dry_batch(tasks, run_dir, harness_commit, task_base_commit)
+        records = run_dry_batch(tasks, run_dir, harness_commit, task_base_commit, lanes=lanes)
     else:
         ensure_clean_repo(ROOT, force=args.force_dirty_base)
-        records = run_live_batch(tasks, run_dir, stamp, args.base, args.timeout, harness_commit)
+        records = run_live_batch(tasks, run_dir, stamp, args.base, args.timeout, harness_commit, lanes=lanes)
     write_records(run_dir / "records.jsonl", records)
     write_summary(run_dir)
     print(run_dir)

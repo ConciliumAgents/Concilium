@@ -101,7 +101,7 @@ class BenchmarkRoundtableTests(unittest.TestCase):
             benchmark.write_summary(run_dir)
             summary = (run_dir / "summary.md").read_text(encoding="utf-8")
         self.assertIn("# Loop Engine Benchmark Summary", summary)
-        self.assertIn("| sample | PASS | PASS | PASS | tie |", summary)
+        self.assertIn("| sample | PASS | PASS | PASS | - | tie |", summary)
 
     def test_dry_batch_includes_review_lane(self):
         with tempfile.TemporaryDirectory() as td:
@@ -111,6 +111,20 @@ class BenchmarkRoundtableTests(unittest.TestCase):
             sorted(record["lane"] for record in records),
             ["baseline-kimi", "review", "roundtable"],
         )
+
+    def test_dry_batch_can_include_router_lane(self):
+        with tempfile.TemporaryDirectory() as td:
+            records = benchmark.run_dry_batch(
+                [sample_task()],
+                pathlib.Path(td),
+                "harness",
+                "base",
+                lanes=("router",),
+            )
+
+        self.assertEqual([record["lane"] for record in records], ["router"])
+        self.assertIn("selected_lane", records[0])
+        self.assertIn("preflight_status", records[0])
 
     def test_lane_record_uses_original_base_after_lane_commits(self):
         with tempfile.TemporaryDirectory() as td:

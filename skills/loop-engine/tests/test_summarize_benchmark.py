@@ -67,8 +67,17 @@ class SummarizeBenchmarkTests(unittest.TestCase):
         ]
         report = summary.build_summary(records)
         self.assertIn("# Loop Engine Benchmark Summary", report)
-        self.assertIn("| Task | Kimi | Review | Roundtable | Outcome | Reason |", report)
-        self.assertIn("| x | PASS | PASS | PASS | tie |", report)
+        self.assertIn("| Task | Kimi | Review | Roundtable | Router | Outcome | Reason |", report)
+        self.assertIn("| x | PASS | PASS | PASS | - | tie |", report)
+
+    def test_build_summary_displays_router_selection(self):
+        router = record("x", "router", "PASS", 5)
+        router["selected_lane"] = "review"
+        router["preflight_status"] = "warn"
+
+        report = summary.build_summary([router])
+
+        self.assertIn("| x | - | - | - | PASS(selected=review) |", report)
 
     def test_summary_counts_review_better(self):
         records = [

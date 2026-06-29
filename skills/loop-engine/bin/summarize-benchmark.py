@@ -56,25 +56,41 @@ def group_by_task(records: list[dict]) -> dict[str, dict[str, dict]]:
     return dict(grouped)
 
 
+def format_lane_cell(record: dict | None) -> str:
+    if not record:
+        return "-"
+    status = record.get("status", "-")
+    if record.get("lane") == "router":
+        selected = record.get("selected_lane", "")
+        preflight = record.get("preflight_status", "")
+        if status == "PASS":
+            return f"PASS(selected={selected or '-'})"
+        if preflight:
+            return f"{status}({preflight})"
+    return status
+
+
 def build_summary(records: list[dict]) -> str:
     grouped = group_by_task(records)
     counts = defaultdict(int)
     lines = [
         "# Loop Engine Benchmark Summary",
         "",
-        "| Task | Kimi | Review | Roundtable | Outcome | Reason |",
-        "|---|---|---|---|---|---|",
+        "| Task | Kimi | Review | Roundtable | Router | Outcome | Reason |",
+        "|---|---|---|---|---|---|---|",
     ]
     for task_id in sorted(grouped):
         kimi = grouped[task_id].get("baseline-kimi")
         review = grouped[task_id].get("review")
         roundtable = grouped[task_id].get("roundtable")
+        router = grouped[task_id].get("router")
         outcome, reason = classify_task(kimi, review, roundtable)
         counts[outcome] += 1
         lines.append(
-            f"| {task_id} | {kimi.get('status', '-') if kimi else '-'} | "
-            f"{review.get('status', '-') if review else '-'} | "
-            f"{roundtable.get('status', '-') if roundtable else '-'} | {outcome} | {reason} |"
+            f"| {task_id} | {format_lane_cell(kimi)} | "
+            f"{format_lane_cell(review)} | "
+            f"{format_lane_cell(roundtable)} | "
+            f"{format_lane_cell(router)} | {outcome} | {reason} |"
         )
     lines += [
         "",
