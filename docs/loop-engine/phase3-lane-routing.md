@@ -73,6 +73,14 @@ This lane uses the existing conductor loop: planner assigns work, executor imple
 
 The product should include an initialization step rather than assuming the local benchmark roster.
 
+Configuration should resolve in this order:
+
+1. Bundled defaults from `skills/loop-engine/config/concilium.defaults.json`.
+2. User or machine defaults from `~/.config/concilium/config.json`.
+3. Project overrides from `<repo>/.concilium.json`.
+
+Project overrides have the highest priority so a repository can intentionally differ from the user's normal Concilium defaults.
+
 Minimum setup questions:
 
 1. Default simple-task agent/model (`default_single_agent`).

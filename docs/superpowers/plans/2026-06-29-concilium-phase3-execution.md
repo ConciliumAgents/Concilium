@@ -52,7 +52,7 @@ Phase 3 is closed only when all of these are true:
 - Create: `skills/loop-engine/tests/test_concilium_config.py`
 - Modify: `docs/loop-engine/phase3-lane-routing.md`
 
-- [ ] **Step 1: Add default config fixture**
+- [x] **Step 1: Add default config fixture**
 
 Create `skills/loop-engine/config/concilium.defaults.json`:
 
@@ -93,7 +93,7 @@ Create `skills/loop-engine/config/concilium.defaults.json`:
 }
 ```
 
-- [ ] **Step 2: Write failing tests for precedence and validation**
+- [x] **Step 2: Write failing tests for precedence and validation**
 
 Create `skills/loop-engine/tests/test_concilium_config.py`:
 
@@ -190,7 +190,7 @@ if __name__ == "__main__":
     unittest.main()
 ```
 
-- [ ] **Step 3: Run tests to verify failure**
+- [x] **Step 3: Run tests to verify failure**
 
 Run:
 
@@ -200,7 +200,7 @@ python3 -m unittest skills.loop-engine.tests.test_concilium_config
 
 Expected: FAIL because `concilium_config.py` does not exist.
 
-- [ ] **Step 4: Implement config loader**
+- [x] **Step 4: Implement config loader**
 
 Create `skills/loop-engine/bin/concilium_config.py` with these public functions:
 
@@ -227,7 +227,7 @@ Required behavior:
 - `routing.risk_posture` must be one of `speed-first`, `balanced`, `review-first`.
 - `capacity.block_below_percent` must be less than or equal to `capacity.warn_below_percent`.
 
-- [ ] **Step 5: Add CLI**
+- [x] **Step 5: Add CLI**
 
 `python3 skills/loop-engine/bin/concilium_config.py --repo /path --print-effective` must print JSON and exit 0.
 
@@ -251,7 +251,7 @@ Required behavior:
 }
 ```
 
-- [ ] **Step 6: Verify**
+- [x] **Step 6: Verify**
 
 Run:
 
@@ -262,7 +262,7 @@ python3 -m unittest discover -s skills/loop-engine/tests
 
 Expected: all tests pass.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add skills/loop-engine/config/concilium.defaults.json skills/loop-engine/bin/concilium_config.py skills/loop-engine/tests/test_concilium_config.py docs/loop-engine/phase3-lane-routing.md
