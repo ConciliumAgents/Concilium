@@ -278,7 +278,7 @@ git commit -m "feat(concilium): add layered configuration"
 - Create: `skills/loop-engine/tests/test_capacity_status.py`
 - Modify: `skills/loop-engine/bin/roster-detect.py`
 
-- [ ] **Step 1: Write failing tests for capacity records**
+- [x] **Step 1: Write failing tests for capacity records**
 
 Create `skills/loop-engine/tests/test_capacity_status.py`:
 
@@ -345,7 +345,7 @@ if __name__ == "__main__":
     unittest.main()
 ```
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 Run:
 
@@ -355,7 +355,7 @@ python3 -m unittest skills.loop-engine.tests.test_capacity_status
 
 Expected: FAIL because `capacity_status.py` does not exist.
 
-- [ ] **Step 3: Implement status model**
+- [x] **Step 3: Implement status model**
 
 Create `skills/loop-engine/bin/capacity_status.py` with:
 
@@ -387,7 +387,7 @@ Record shape:
 }
 ```
 
-- [ ] **Step 4: Extend roster output without changing existing keys**
+- [x] **Step 4: Extend roster output without changing existing keys**
 
 Modify `skills/loop-engine/bin/roster-detect.py` so each detected seat may include:
 
@@ -404,7 +404,7 @@ Modify `skills/loop-engine/bin/roster-detect.py` so each detected seat may inclu
 
 Do not make `roster-detect.py --json` call network or provider APIs in this task. It should only expose the stable default capacity shape above so UI and router code can consume it.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run:
 
@@ -416,7 +416,7 @@ python3 skills/loop-engine/bin/roster-detect.py --json | python3 -m json.tool >/
 
 Expected: tests pass and roster JSON remains valid.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add skills/loop-engine/bin/capacity_status.py skills/loop-engine/bin/roster-detect.py skills/loop-engine/tests/test_capacity_status.py

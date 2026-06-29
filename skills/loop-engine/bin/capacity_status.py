@@ -1,0 +1,69 @@
+#!/usr/bin/env python3
+"""Concilium capacity status records and redaction helpers."""
+from __future__ import annotations
+
+import datetime
+import re
+
+STATUSES = {"ok", "soft_limited", "hard_exhausted", "unavailable", "unknown"}
+BLOCKING_STATUSES = {"hard_exhausted", "unavailable"}
+REDACTED = "[REDACTED]"
+EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
+API_KEY_RE = re.compile(r"\bsk-[A-Za-z0-9_-]+\b")
+JWT_LIKE_RE = re.compile(r"\b[A-Za-z0-9_-]{3,}\.[A-Za-z0-9_-]{3,}\.[A-Za-z0-9_-]{3,}\b")
+
+
+def classify_percent(percent_remaining: float | int | None, warn_below: int, block_below: int) -> str:
+    if percent_remaining is None:
+        return "unknown"
+    if percent_remaining < block_below:
+        return "hard_exhausted"
+    if percent_remaining < warn_below:
+        return "soft_limited"
+    return "ok"
+
+
+def redact(text: str) -> str:
+    value = API_KEY_RE.sub(REDACTED, text)
+    value = EMAIL_RE.sub(REDACTED, value)
+    value = JWT_LIKE_RE.sub(REDACTED, value)
+    return value
+
+
+def make_record(
+    seat: str,
+    provider: str,
+    model: str,
+    status: str,
+    source: str,
+    reason: str,
+    percent_remaining: float | None = None,
+    reset_at: str = "",
+    stale_after_seconds: int = 300,
+) -> dict:
+    if status not in STATUSES:
+        raise ValueError(f"unknown capacity status: {status}")
+    now = datetime.datetime.now(datetime.UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return {
+        "seat": seat,
+        "provider": provider,
+        "model": model,
+        "status": status,
+        "source": source,
+        "percent_remaining": percent_remaining,
+        "reset_at": reset_at,
+        "checked_at": now,
+        "stale_after_seconds": stale_after_seconds,
+        "blocking": status in BLOCKING_STATUSES,
+        "reason": redact(reason),
+    }
+
+
+def summarize_blockers(records: list[dict]) -> list[str]:
+    blockers = []
+    for record in records:
+        if record.get("blocking"):
+            seat = record.get("seat", "unknown")
+            reason = record.get("reason") or record.get("status", "blocked")
+            blockers.append(f"{seat}: {reason}")
+    return blockers

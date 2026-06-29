@@ -11,6 +11,10 @@ from __future__ import annotations
 import argparse, json, os, re, shutil, subprocess, sys
 from pathlib import Path
 
+BIN = Path(__file__).resolve().parent
+sys.path.insert(0, str(BIN))
+import capacity_status  # noqa: E402
+
 HOME = Path.home()
 
 
@@ -149,8 +153,25 @@ def detect_kimi():
     return d
 
 
+def attach_default_capacity(seat):
+    out = dict(seat)
+    out["capacity"] = capacity_status.make_record(
+        seat=out.get("seat", ""),
+        provider=out.get("provider", ""),
+        model=out.get("model", ""),
+        status="unknown",
+        source="not_checked",
+        reason="capacity-status not requested",
+    )
+    return out
+
+
 def detect_all():
-    return [detect_claude(), detect_codex(), detect_hermes(), detect_kimi()]
+    return [
+        attach_default_capacity(seat)
+        for seat in [detect_claude(), detect_codex(), detect_hermes(), detect_kimi()]
+    ]
+
 
 
 def print_table(seats):
