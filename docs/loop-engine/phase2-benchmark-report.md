@@ -48,3 +48,14 @@ This benchmark should still not be treated as a broad claim that single-agent Ki
 ## Decision
 
 Do not promote Agent-level MoA as measurably better yet. The next engineering target should be reducing roundtable false ERR outcomes and preventing out-of-scope memory writes during benchmark lanes before running a second benchmark set.
+
+## Hardening Follow-Up
+
+After the first five-task set, the benchmark harness was tightened so lane quality is judged by task verification, allowed target diffs, and path-boundary compliance. Raw process health is still recorded through `lane_returncode` and `warnings`.
+
+Validation runs:
+
+- `evals/loop-engine/phase2/runs/20260629-110226-791450`: `eval_runner_missing_command_test` stayed `kimi_better`. Roundtable verification passed, but it produced no allowed target diff, so the lane remained ERR. The conductor return code was preserved as `warnings: ["lane returncode 1"]`.
+- `evals/loop-engine/phase2/runs/20260629-110711-282495`: `seat_contract_bold_verdict_doc` became a tie. Roundtable verification passed, changed only `docs/loop-engine/seat-contract.md`, and no longer wrote `roundtable-memory/LESSONS.md`; the conductor return code `1` remained visible as a warning.
+
+Current interpretation: the original five-task result remains valid as a pre-hardening baseline, but a second full five-task benchmark set should be run before updating the overall Phase 2 decision.
