@@ -21,6 +21,7 @@ EXEC_EXCLUDE = {"claude", "codex"}
 # 飞毛腿执行兜底优先级（kimi=K2.7 强编码优先执行）。注意：reviewer 选座优先级另在
 # _resolve_reviewer 内单独定（异质 hermes=deepseek 优先复审），与此处执行优先级有意不同。
 FAST_PRIORITY = ["kimi", "hermes"]
+REVIEW_FALLBACK_PRIORITY = ["claude", "hermes", "kimi", "codex"]
 VERDICT_MAP = {0: "PASS", 2: "BLOCK", 1: "ERR"}
 
 
@@ -559,6 +560,27 @@ def _fallback_plan(executors: list, task: str) -> list:
     return [{"agent": target, "subtask": task}]
 
 
+def build_plan_brief(feedback: str, executors: list[str], reviewer: str) -> str:
+    """给总指挥的本轮角色约束，避免把实施派给验证席或生成只读复审子任务。"""
+    lines = [
+        "【本轮角色约束】",
+        f"- 执行池: {', '.join(executors) or '（空）'}。只有执行池座位可接收实施/修改/测试子任务。",
+        f"- 验证席: {reviewer or '（无）'}。不要把实施任务派给验证席；conductor 会在执行后统一触发只读复审。",
+        "- plan JSON 只输出执行池座位的实施子任务，不要输出只读复审子任务。",
+    ]
+    if feedback:
+        lines += ["", feedback]
+    return "\n".join(lines)
+
+
+def _fallback_reviewers(seated: list[str], primary: str, executors: list[str]) -> list[str]:
+    """reviewer 进程 ERR 时的只读备援；不选本轮执行席，避免 maker=checker。"""
+    return [
+        agent for agent in REVIEW_FALLBACK_PRIORITY
+        if agent in seated and agent != primary and agent not in executors
+    ]
+
+
 def _plan_note(plan_failed: bool, is_fallback: bool) -> str:
     """plan 异常的准确措辞：区分「真兜底（kept 空）」与「plan 进程报错但仍采用其计划」。"""
     if is_fallback:
@@ -669,7 +691,11 @@ def run(repo, task, commander="claude", reviewer="", max_iters=5, test_cmd="",
         # 总指挥派活
         cp, cm = sm(commander)
         reporter.seat(commander, "plan", "读花名册分派", phase="start")
-        rc, out = run_seat(commander, "plan", repo, brief=feedback, provider=cp, model=cm)
+        rc, out = run_seat(
+            commander, "plan", repo,
+            brief=build_plan_brief(feedback, executors, reviewer),
+            provider=cp, model=cm,
+        )
         reporter.seat(commander, "plan", "", rc, phase="done")
         reporter.transcript(commander, "plan", out)
         plan_failed = (rc != 0)
@@ -704,13 +730,23 @@ def run(repo, task, commander="claude", reviewer="", max_iters=5, test_cmd="",
         _, o = sh_capture("kb-refresh.sh", repo, test_cmd); reporter.log(o)
 
         # 验证
-        rp, rm = sm(reviewer)
         rbrief = build_brief(dropped, exec_failures, plan_failed, is_fallback)
-        reporter.seat(reviewer, "review", "独立验证", phase="start")
-        vrc, vout = run_seat(reviewer, "review", repo, brief=rbrief, provider=rp, model=rm)
-        verdict = VERDICT_MAP.get(vrc, "ERR")
-        reporter.seat(reviewer, "review", "", vrc, phase="done")
-        reporter.transcript(reviewer, "review", vout)
+        active_reviewer = reviewer
+        verdict = "ERR"
+        review_chain = [reviewer] + _fallback_reviewers(seated, reviewer, executors)
+        for idx, candidate in enumerate(review_chain):
+            rp, rm = sm(candidate)
+            reporter.seat(candidate, "review", "独立验证", phase="start")
+            vrc, vout = run_seat(candidate, "review", repo, brief=rbrief, provider=rp, model=rm)
+            verdict = VERDICT_MAP.get(vrc, "ERR")
+            reporter.seat(candidate, "review", "", vrc, phase="done")
+            reporter.transcript(candidate, "review", vout)
+            active_reviewer = candidate
+            if verdict != "ERR":
+                break
+            if idx + 1 < len(review_chain):
+                reporter.log(f"[loop-engine] ⚠ 验证席 {candidate} ERR，改派备用验证席 {review_chain[idx + 1]}")
+        reviewer = active_reviewer
         reporter.verdict(reviewer, verdict)
         verdicts.append(verdict)
 

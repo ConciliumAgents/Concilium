@@ -75,10 +75,11 @@
       "docs/loop-engine/agent-moa-positioning.md"
     ],
     "verify_cmds": [
-      "rg -n \"session report|human review artifact|report\" docs/loop-engine/agent-moa-positioning.md"
+      "rg -n \"compact session report\" docs/loop-engine/agent-moa-positioning.md",
+      "rg -n \"preferred.*(human review artifact|artifact for human review)|(human review artifact|artifact for human review).*preferred\" docs/loop-engine/agent-moa-positioning.md"
     ],
     "quality_checks": [
-      "The sentence mentions session reports as human review artifacts.",
+      "The sentence mentions compact session reports as the preferred human review artifact.",
       "The existing private prototype boundary remains intact.",
       "No generated roundtable sessions are committed."
     ],
