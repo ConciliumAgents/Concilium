@@ -141,6 +141,39 @@ class BenchmarkRoundtableTests(unittest.TestCase):
         self.assertIn("tracked.txt", record["changed_files"])
         self.assertIn("tracked.txt", record["diff_summary"])
 
+    def test_resolve_commit_dereferences_annotated_tags(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo = pathlib.Path(td)
+            subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.DEVNULL)
+            (repo / "tracked.txt").write_text("base\n", encoding="utf-8")
+            subprocess.run(["git", "add", "tracked.txt"], cwd=repo, check=True)
+            subprocess.run(
+                ["git", "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "base"],
+                cwd=repo,
+                check=True,
+                stdout=subprocess.DEVNULL,
+            )
+            commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+            subprocess.run(
+                ["git", "-c", "user.name=Test", "-c", "user.email=test@example.com", "tag", "-a", "v1", "-m", "tag"],
+                cwd=repo,
+                check=True,
+                stdout=subprocess.DEVNULL,
+            )
+            tag_object = subprocess.check_output(["git", "rev-parse", "v1"], cwd=repo, text=True).strip()
+
+            self.assertNotEqual(tag_object, commit)
+            self.assertEqual(benchmark.resolve_commit("v1", cwd=repo), commit)
+
+    def test_path_violations_ignore_lane_report_but_block_other_paths(self):
+        task = sample_task()
+        task["allowed_paths"] = ["docs/example.md"]
+        violations = benchmark.path_violations(
+            task,
+            ["BENCHMARK-REPORT.md", "docs/example.md", "roundtable-memory/LESSONS.md"],
+        )
+        self.assertEqual(violations, ["roundtable-memory/LESSONS.md"])
+
 
 if __name__ == "__main__":
     unittest.main()

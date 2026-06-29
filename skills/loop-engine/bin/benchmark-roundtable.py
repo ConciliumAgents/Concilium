@@ -73,6 +73,10 @@ def git_output(args: list[str], cwd: Path = ROOT) -> str:
     return out.strip()
 
 
+def resolve_commit(ref: str, cwd: Path = ROOT) -> str:
+    return git_output(["rev-parse", f"{ref}^{{commit}}"], cwd)
+
+
 def run_verify_cmds(repo: Path, commands: list[str], timeout: int) -> dict:
     results = []
     passed = True
@@ -195,6 +199,18 @@ def lane_prompt(task: dict, lane: str) -> str:
     ])
 
 
+def path_violations(task: dict, files: list[str]) -> list[str]:
+    allowed = task.get("allowed_paths", [])
+    violations = []
+    for file in files:
+        if file == "BENCHMARK-REPORT.md":
+            continue
+        if any(file == item or file.startswith(item.rstrip("/") + "/") for item in allowed):
+            continue
+        violations.append(file)
+    return violations
+
+
 def cleanup_kimi_session(output: str) -> None:
     matches = re.findall(r"session_[0-9a-f-]{30,}", output, flags=re.I)
     if not matches:
@@ -241,15 +257,23 @@ def lane_record(
 ) -> dict:
     elapsed = time.time() - started
     timeout_count = 1 if returncode == 124 else 0
+    changed = changed_files_since(repo, task_base_commit)
+    violations = path_violations(task, changed)
+    findings = []
+    if returncode != 0 or not verify["passed"]:
+        findings.append(f"lane returncode {returncode} or verify failed")
+    if violations:
+        findings.append("changed files outside allowed_paths: " + ", ".join(violations))
+    final_status = "ERR" if status == "PASS" and violations else status
     return {
         "task_id": task["id"],
         "category": task.get("category", ""),
         "lane": lane,
-        "status": status,
+        "status": final_status,
         "verify_passed": verify["passed"],
         "review_verdict": "",
-        "blocking_findings": [] if status == "PASS" else [f"lane returncode {returncode} or verify failed"],
-        "changed_files": changed_files_since(repo, task_base_commit),
+        "blocking_findings": findings,
+        "changed_files": changed,
         "diff_summary": diff_stat_since(repo, task_base_commit),
         "contract_valid": True,
         "human_quality_score": None,
@@ -412,7 +436,7 @@ def run_dry_batch(tasks: list[dict], run_dir: Path, harness_commit: str, task_ba
 
 def run_live_batch(tasks: list[dict], run_dir: Path, stamp: str, base_ref: str, timeout: int, harness_commit: str) -> list[dict]:
     records = []
-    task_base_commit = git_output(["rev-parse", base_ref])
+    task_base_commit = resolve_commit(base_ref)
     for task in tasks:
         for lane in LANES:
             lane_repo = lane_worktree_path(stamp, lane, task["id"])
@@ -465,7 +489,7 @@ def main() -> int:
     stamp = now_stamp()
     run_dir = Path(args.out).resolve() if args.out else output_path_for(stamp)
     harness_commit = git_output(["rev-parse", "HEAD"])
-    task_base_commit = git_output(["rev-parse", args.base])
+    task_base_commit = resolve_commit(args.base)
     mode = "dry-run" if args.dry_run else "live"
     write_json(run_dir / "batch.json", {
         "stamp": stamp,
