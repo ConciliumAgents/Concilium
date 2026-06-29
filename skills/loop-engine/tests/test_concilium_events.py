@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import importlib.util
 import pathlib
+import queue
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
@@ -29,6 +30,28 @@ class ConciliumEventsTests(unittest.TestCase):
         done = [event for event in sink.events if event["type"] == "done"]
         self.assertEqual(len(done), 1)
         self.assertEqual(done[0]["rc"], 0)
+
+    def test_event_type_cannot_be_overwritten_by_fields(self):
+        sink = concilium_events.ListEventSink()
+        sink.emit("done", **{"type": "progress", "rc": 0})
+        sink.emit("done", rc=1)
+
+        self.assertEqual(sink.events[0]["type"], "done")
+        done = [event for event in sink.events if event["type"] == "done"]
+        self.assertEqual(len(done), 1)
+        self.assertEqual(done[0]["rc"], 0)
+
+    def test_queue_sink_redacts_and_emits_done_once(self):
+        q: queue.Queue = queue.Queue()
+        sink = concilium_events.QueueEventSink(q)
+        sink.emit("done", text="token sk-secret123", rc=0)
+        sink.emit("done", rc=1)
+
+        self.assertEqual(q.qsize(), 1)
+        event = q.get_nowait()
+        self.assertEqual(event["type"], "done")
+        self.assertEqual(event["rc"], 0)
+        self.assertNotIn("sk-secret123", str(event))
 
 
 if __name__ == "__main__":

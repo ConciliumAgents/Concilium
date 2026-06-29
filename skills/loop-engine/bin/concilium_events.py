@@ -31,8 +31,8 @@ class ListEventSink:
             return
         if event_type == "done":
             self.done_emitted = True
-        event = {"type": event_type}
-        event.update(fields)
+        event = dict(fields)
+        event["type"] = event_type
         self.events.append(_redact(event))
 
 
@@ -46,8 +46,8 @@ class QueueEventSink:
             return
         if event_type == "done":
             self.done_emitted = True
-        event = {"type": event_type}
-        event.update(fields)
+        event = dict(fields)
+        event["type"] = event_type
         self.q.put(_redact(event))
 
 
