@@ -7,11 +7,12 @@ SSE 端点把队列实时流给浏览器。仅 127.0.0.1，不对外。
 端点：
   GET  /                 → 前端页面 index.html
   GET  /api/doctor       → 座位探测结果（roster-detect --json）
+  POST /api/preflight    → 预检 Concilium lane/capacity（JSON body）
   POST /api/run          → 启动一次圆桌（JSON body），返回 {run_id}
   GET  /api/events?run=  → SSE 实时事件流
 """
 from __future__ import annotations
-import json, os, queue, secrets, subprocess, sys, threading, webbrowser
+import importlib.util, json, os, queue, secrets, subprocess, sys, threading, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
@@ -20,6 +21,19 @@ HERE = Path(__file__).resolve().parent
 BIN = HERE.parent / "bin"
 sys.path.insert(0, str(BIN))
 import conductor  # noqa: E402
+import capacity_status  # noqa: E402
+
+
+def _load_bin_module(name: str, filename: str):
+    module_path = BIN / filename
+    spec = importlib.util.spec_from_file_location(name, module_path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+concilium_run = _load_bin_module("concilium_run", "concilium-run.py")
 
 RUNS: dict[str, dict] = {}   # run_id -> {"q": Queue}
 _seq = {"n": 0}
@@ -96,6 +110,36 @@ def project_info(repo: str) -> dict:
     return out
 
 
+def _redact_response(value):
+    if isinstance(value, dict):
+        return {key: _redact_response(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_redact_response(item) for item in value]
+    if isinstance(value, str):
+        return capacity_status.redact(value)
+    return value
+
+
+def build_preflight(params: dict) -> dict:
+    return concilium_run.run_concilium(
+        params["repo"],
+        params["task"],
+        test_cmd=params.get("test_cmd", ""),
+        dry_run=True,
+        print_route=True,
+    )
+
+
+def preflight_response(params: dict) -> dict:
+    result = build_preflight(params)
+    return _redact_response({
+        "route": result.get("route", {}),
+        "preflight": result.get("preflight", {}),
+        "capacity": result.get("capacity", []),
+        "signals": result.get("signals", {}),
+    })
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a): pass  # 静音默认访问日志
 
@@ -151,7 +195,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         u = urlparse(self.path)
-        if u.path != "/api/run":
+        if u.path not in ("/api/run", "/api/preflight"):
             return self._send(404, b'{"error":"not found"}')
         if not secrets.compare_digest(self.headers.get("X-Loop-Token", ""), TOKEN):
             return self._send(403, b'{"error":"bad or missing token"}')
@@ -159,6 +203,15 @@ class Handler(BaseHTTPRequestHandler):
         params = json.loads(self.rfile.read(n) or b"{}")
         if not params.get("repo") or not params.get("task"):
             return self._send(400, '{"error":"repo 和 task 必填"}'.encode("utf-8"))
+        if u.path == "/api/preflight":
+            try:
+                return self._send(
+                    200,
+                    json.dumps(preflight_response(params), ensure_ascii=False).encode("utf-8"),
+                )
+            except Exception as e:
+                body = {"error": f"{type(e).__name__}: {capacity_status.redact(str(e))}"}
+                return self._send(500, json.dumps(body, ensure_ascii=False).encode("utf-8"))
         with _lock:
             _seq["n"] += 1
             run_id = f"run{_seq['n']}"

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="loop-token" content="__LOOP_TOKEN__">
-<title>圆桌会议 · Loop Engine</title>
+<title>Concilium · Loop Engine</title>
 <style>
   :root{--bg:#0f1420;--card:#1a2030;--line:#2a3344;--fg:#e6edf3;--dim:#8b98a9;--cyan:#39c5cf;--green:#3fb950;--red:#f85149;--yellow:#d29922;}
   *{box-sizing:border-box}
@@ -48,8 +48,8 @@
 </head>
 <body>
 <header>
-  <h1>⃝ 圆桌会议 · Loop Engine</h1>
-  <span class="sub">Claude Code 为可指派的总指挥 · codex/hermes/kimi 各在原生壳入席 · 本地 127.0.0.1</span>
+  <h1>Concilium · Loop Engine</h1>
+  <span class="sub">本地 127.0.0.1 · 预检 lane、席位与容量，再进入圆桌执行</span>
 </header>
 <main>
   <!-- 配置区 -->
@@ -78,9 +78,11 @@
     <div class="hint" id="rosterhint">加载中…</div>
 
     <div class="btns">
+      <button class="ghost" id="preflight">预检</button>
       <button id="run">▶ 开跑</button>
       <button class="ghost" id="refresh">↻ 重新探测座位</button>
     </div>
+    <div class="hint" id="routepreview">填写任务后可预检 lane 和席位状态。</div>
     <div class="hint err" id="formerr"></div>
   </section>
 
@@ -105,6 +107,7 @@ const $ = s => document.querySelector(s);
 const SEATS = ["claude","codex","hermes","kimi"];
 const LOOP_TOKEN = document.querySelector('meta[name="loop-token"]')?.content || "";  // server 启动时注入，POST /api/run 必带
 let doctor = {};
+let preflightBlocked = false;
 
 async function loadDoctor(){
   $("#rosterhint").textContent = "探测中…";
@@ -126,6 +129,7 @@ function renderRoster(arr){
         <input type="checkbox" class="seat-chk" data-seat="${s.seat}" checked style="width:auto">
         <span class="nm">${s.seat}</span></label>
       <div class="meta">${s.strength||""}</div>
+      <div class="meta capacity" data-seat="${s.seat}">capacity: ${s.capacity?.status || "unknown"}</div>
       <label style="margin:6px 0 2px">用哪个脑子</label>
       <select class="seat-model" data-seat="${s.seat}">${opts||'<option value="|">默认</option>'}</select>
     </div>`;
@@ -138,6 +142,7 @@ function refreshSeatedSelects(){
   const opt = a => seated.map(x=>`<option value="${x}"${x===a?" selected":""}>${x}</option>`).join("");
   $("#commander").innerHTML = opt(seated.includes(cur.c)?cur.c:(seated.includes("claude")?"claude":seated[0]));
   $("#reviewer").innerHTML  = opt(seated.includes(cur.r)?cur.r:(seated.includes("codex")?"codex":seated[0]));
+  clearPreview();
 }
 
 function boardSeatCard(seat){
@@ -172,6 +177,71 @@ function startRun(params){
       es.onerror=()=>{ logLine("（连接关闭）"); es.close(); };
     });
 }
+
+function collectParams(){
+  const repo=$("#repo").value.trim(), task=$("#task").value.trim();
+  if(!repo||!task){ throw new Error("仓库路径和任务都得填。"); }
+  const seats=[...document.querySelectorAll(".seat-chk")].filter(c=>c.checked).map(c=>c.dataset.seat);
+  if(!seats.length){ throw new Error("至少勾一个 agent 上桌。"); }
+  const seat_models={};
+  document.querySelectorAll(".seat-model").forEach(sel=>{
+    if(seats.includes(sel.dataset.seat) && sel.value && sel.value!=="|"){
+      const [provider,model]=sel.value.split("|"); seat_models[sel.dataset.seat]={provider,model};
+    }
+  });
+  return {repo, task, commander:$("#commander").value, reviewer:$("#reviewer").value,
+          max_iters:+$("#maxiters").value, test_cmd:$("#testcmd").value.trim(),
+          dry_run:$("#dryrun").checked, seats, seat_models};
+}
+
+function clearPreview(){
+  preflightBlocked = false;
+  $("#run").disabled = false;
+  $("#routepreview").textContent = "填写任务后可预检 lane 和席位状态。";
+}
+
+function applyCapacity(capacity){
+  (capacity||[]).forEach(item=>{
+    const el = document.querySelector(`.capacity[data-seat="${item.seat}"]`);
+    if(el){
+      const pct = item.percent_remaining == null ? "" : ` · ${item.percent_remaining}%`;
+      el.textContent = `capacity: ${item.status}${pct}`;
+    }
+  });
+}
+
+async function runPreflight(){
+  try{
+    const params = collectParams();
+    $("#formerr").textContent = "";
+    $("#routepreview").textContent = "预检中…";
+    const r = await fetch("/api/preflight", {
+      method:"POST",
+      headers:{"Content-Type":"application/json","X-Loop-Token":LOOP_TOKEN},
+      body:JSON.stringify(params)
+    });
+    const data = await r.json();
+    if(!r.ok || data.error){ throw new Error(data.error || `HTTP ${r.status}`); }
+    applyCapacity(data.capacity);
+    const route = data.route || {};
+    const pre = data.preflight || {};
+    const seats = (route.required_seats || []).join(", ") || "none";
+    const warnings = (pre.warnings || []).join("；");
+    preflightBlocked = pre.status === "blocked";
+    $("#run").disabled = preflightBlocked;
+    if(preflightBlocked){
+      $("#routepreview").innerHTML = `<span class="err">lane: ${route.lane || "-"} · blocked: ${(pre.blocking_seats || []).join(", ")}</span>`;
+    }else if(pre.status === "warn"){
+      $("#routepreview").textContent = `lane: ${route.lane || "-"} · required: ${seats} · warn: ${warnings || "capacity unknown"}`;
+    }else{
+      $("#routepreview").textContent = `lane: ${route.lane || "-"} · required: ${seats} · preflight: ${pre.status || "ok"}`;
+    }
+  }catch(e){
+    preflightBlocked = false;
+    $("#run").disabled = false;
+    $("#formerr").textContent = "预检失败："+e.message;
+  }
+}
 function handle(ev){
   switch(ev.type){
     case "start": logLine("开桌："+ev.task, true); break;
@@ -198,26 +268,22 @@ function handle(ev){
 }
 
 $("#run").onclick=()=>{
-  const repo=$("#repo").value.trim(), task=$("#task").value.trim();
-  if(!repo||!task){ $("#formerr").textContent="仓库路径和任务都得填。"; return; }
-  const seats=[...document.querySelectorAll(".seat-chk")].filter(c=>c.checked).map(c=>c.dataset.seat);
-  if(!seats.length){ $("#formerr").textContent="至少勾一个 agent 上桌。"; return; }
-  const seat_models={};
-  document.querySelectorAll(".seat-model").forEach(sel=>{
-    if(seats.includes(sel.dataset.seat) && sel.value && sel.value!=="|"){
-      const [provider,model]=sel.value.split("|"); seat_models[sel.dataset.seat]={provider,model};
-    }
-  });
-  $("#formerr").textContent="";
-  startRun({repo, task, commander:$("#commander").value, reviewer:$("#reviewer").value,
-            max_iters:+$("#maxiters").value, test_cmd:$("#testcmd").value.trim(),
-            dry_run:$("#dryrun").checked, seats, seat_models});
+  try{
+    if(preflightBlocked){ $("#formerr").textContent="预检已阻断，请调整席位或配置后再运行。"; return; }
+    const params = collectParams();
+    $("#formerr").textContent="";
+    startRun(params);
+  }catch(e){ $("#formerr").textContent=e.message; }
 };
+$("#preflight").onclick=runPreflight;
 $("#refresh").onclick=loadDoctor;
 $("#back").onclick=()=>{ $("#board").classList.add("hide"); $("#setup").classList.remove("hide"); };
 
 let projT;
-$("#repo").addEventListener("input",()=>{ clearTimeout(projT); projT=setTimeout(checkProject,500); });
+$("#repo").addEventListener("input",()=>{ clearPreview(); clearTimeout(projT); projT=setTimeout(checkProject,500); });
+$("#task").addEventListener("input",clearPreview);
+$("#testcmd").addEventListener("input",clearPreview);
+$("#dryrun").addEventListener("change",clearPreview);
 async function checkProject(){
   const repo=$("#repo").value.trim();
   if(!repo){ $("#projinfo").textContent=""; return; }

@@ -79,6 +79,15 @@ class SummarizeBenchmarkTests(unittest.TestCase):
 
         self.assertIn("| x | - | - | - | PASS(selected=review) |", report)
 
+    def test_build_summary_displays_router_blocked(self):
+        router = record("x", "router", "ERR", 5)
+        router["selected_lane"] = "review"
+        router["preflight_status"] = "blocked"
+
+        report = summary.build_summary([router])
+
+        self.assertIn("| x | - | - | - | ERR(blocked) |", report)
+
     def test_summary_counts_review_better(self):
         records = [
             record("x", "baseline-kimi", "ERR", 10),
