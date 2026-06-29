@@ -59,6 +59,52 @@ def make_record(
     }
 
 
+def _capacity_thresholds(config: dict) -> tuple[int, int, int]:
+    capacity = config.get("capacity", {}) if isinstance(config, dict) else {}
+    warn = capacity.get("warn_below_percent", 20)
+    block = capacity.get("block_below_percent", 5)
+    stale = capacity.get("max_status_age_seconds", 300)
+    return int(warn), int(block), int(stale)
+
+
+def roster_capacity_from_detected_seat(seat: dict, config: dict) -> dict:
+    warn, block, stale = _capacity_thresholds(config)
+    raw_capacity = seat.get("capacity") if isinstance(seat.get("capacity"), dict) else {}
+    percent = raw_capacity.get("percent_remaining")
+    provider = seat.get("provider", "")
+    model = seat.get("model", "")
+
+    if not seat.get("available", False):
+        return make_record(
+            seat=str(seat.get("seat", "unknown")),
+            provider=str(provider),
+            model=str(model),
+            status="unavailable",
+            source="roster",
+            reason=seat.get("reason") or raw_capacity.get("reason") or "seat CLI unavailable",
+            percent_remaining=percent,
+            stale_after_seconds=stale,
+        )
+
+    status = classify_percent(percent, warn_below=warn, block_below=block)
+    reason = raw_capacity.get("reason") or "quota source not checked"
+    return make_record(
+        seat=str(seat.get("seat", "unknown")),
+        provider=str(provider),
+        model=str(model),
+        status=status,
+        source=raw_capacity.get("source") or "roster",
+        reason=reason,
+        percent_remaining=percent,
+        reset_at=raw_capacity.get("reset_at", ""),
+        stale_after_seconds=stale,
+    )
+
+
+def collect_capacity_from_roster(detected: list[dict], config: dict) -> list[dict]:
+    return [roster_capacity_from_detected_seat(seat, config) for seat in detected]
+
+
 def summarize_blockers(records: list[dict]) -> list[str]:
     blockers = []
     for record in records:

@@ -80,6 +80,28 @@ class CapacityStatusTests(unittest.TestCase):
         self.assertFalse(enriched["capacity"]["blocking"])
         self.assertEqual(enriched["capacity"]["reason"], "capacity-status not requested")
 
+    def test_roster_unavailable_blocks(self):
+        config = {"capacity": {"warn_below_percent": 20, "block_below_percent": 5, "max_status_age_seconds": 300}}
+
+        record = capacity_status.roster_capacity_from_detected_seat(
+            {"seat": "claude", "available": False, "provider": "anthropic", "model": "opus"},
+            config,
+        )
+
+        self.assertEqual(record["status"], "unavailable")
+        self.assertTrue(record["blocking"])
+
+    def test_roster_available_unknown_does_not_block(self):
+        config = {"capacity": {"warn_below_percent": 20, "block_below_percent": 5, "max_status_age_seconds": 300}}
+
+        record = capacity_status.roster_capacity_from_detected_seat(
+            {"seat": "kimi", "available": True, "provider": "moonshot", "model": "kimi-code/kimi-for-coding"},
+            config,
+        )
+
+        self.assertEqual(record["status"], "unknown")
+        self.assertFalse(record["blocking"])
+
 
 if __name__ == "__main__":
     unittest.main()
