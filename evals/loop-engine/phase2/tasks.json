@@ -1,0 +1,114 @@
+[
+  {
+    "id": "seat_contract_bold_verdict_doc",
+    "category": "repo-local",
+    "prompt": "Document in docs/loop-engine/seat-contract.md that review verdict parsers accept a single Markdown-bold verdict line such as **VERDICT: PASS** or **VERDICT: BLOCK**, while still requiring exactly one verdict line. Keep the change concise.",
+    "allowed_paths": [
+      "docs/loop-engine/seat-contract.md"
+    ],
+    "verify_cmds": [
+      "rg -n \"Markdown-bold|\\*\\*VERDICT: PASS\\*\\*|\\*\\*VERDICT: BLOCK\\*\\*\" docs/loop-engine/seat-contract.md"
+    ],
+    "quality_checks": [
+      "The doc says Markdown-bold verdict lines are accepted.",
+      "The doc still says exactly one review verdict is required.",
+      "No code or unrelated docs are changed."
+    ],
+    "expected_artifacts": [
+      "report.md",
+      "diff.patch",
+      "test-results.txt",
+      "result.json"
+    ]
+  },
+  {
+    "id": "report_session_block_test",
+    "category": "repo-local",
+    "prompt": "Add a focused unittest showing skills/loop-engine/bin/report-session.py includes a BLOCK review verdict in the minute index. Keep the implementation unchanged unless the test exposes a real bug.",
+    "allowed_paths": [
+      "skills/loop-engine/tests/test_report_session.py",
+      "skills/loop-engine/bin/report-session.py"
+    ],
+    "verify_cmds": [
+      "python3 skills/loop-engine/tests/test_report_session.py"
+    ],
+    "quality_checks": [
+      "The new test constructs a temporary session fixture.",
+      "The report minute index displays BLOCK for a review minute.",
+      "The existing PASS test still passes."
+    ],
+    "expected_artifacts": [
+      "report.md",
+      "diff.patch",
+      "test-results.txt",
+      "result.json"
+    ]
+  },
+  {
+    "id": "eval_runner_missing_command_test",
+    "category": "repo-local",
+    "prompt": "Add a focused unittest for skills/loop-engine/bin/eval-roundtable.py showing eval_task returns ERR and passed=false when a task has no test_cmd. Keep behavior compatible with existing Phase 1 evals.",
+    "allowed_paths": [
+      "skills/loop-engine/tests/test_eval_roundtable.py",
+      "skills/loop-engine/bin/eval-roundtable.py"
+    ],
+    "verify_cmds": [
+      "python3 skills/loop-engine/tests/test_eval_roundtable.py"
+    ],
+    "quality_checks": [
+      "The test checks missing test_cmd behavior directly.",
+      "No live agents are called.",
+      "Existing eval runner tests still pass."
+    ],
+    "expected_artifacts": [
+      "report.md",
+      "diff.patch",
+      "test-results.txt",
+      "result.json"
+    ]
+  },
+  {
+    "id": "dogfood_roundtable_report_note",
+    "category": "dogfood",
+    "prompt": "Improve docs/loop-engine/agent-moa-positioning.md by adding one concise sentence that a compact session report is the preferred human review artifact after a roundtable run. Do not change the product boundary.",
+    "allowed_paths": [
+      "docs/loop-engine/agent-moa-positioning.md"
+    ],
+    "verify_cmds": [
+      "rg -n \"session report|human review artifact|report\" docs/loop-engine/agent-moa-positioning.md"
+    ],
+    "quality_checks": [
+      "The sentence mentions session reports as human review artifacts.",
+      "The existing private prototype boundary remains intact.",
+      "No generated roundtable sessions are committed."
+    ],
+    "expected_artifacts": [
+      "report.md",
+      "diff.patch",
+      "test-results.txt",
+      "result.json"
+    ]
+  },
+  {
+    "id": "dogfood_memory_boundary_note",
+    "category": "dogfood",
+    "prompt": "Improve docs/loop-engine/agent-moa-positioning.md by adding one concise sentence that benchmark and demo artifacts must stay separate from private operational memory. Do not add publishing guidance.",
+    "allowed_paths": [
+      "docs/loop-engine/agent-moa-positioning.md"
+    ],
+    "verify_cmds": [
+      "rg -n \"benchmark|demo|private operational memory|operational memory\" docs/loop-engine/agent-moa-positioning.md"
+    ],
+    "quality_checks": [
+      "The sentence distinguishes benchmark/demo artifacts from private operational memory.",
+      "The change does not imply public release readiness.",
+      "No private memory files are modified."
+    ],
+    "expected_artifacts": [
+      "report.md",
+      "diff.patch",
+      "test-results.txt",
+      "result.json"
+    ]
+  }
+]
