@@ -128,6 +128,77 @@ class BudgetGuardTests(unittest.TestCase):
 
         self.assertTrue(result["confirmation_payload"]["files_may_be_modified"])
 
+    def test_read_only_audit_confirmation_payload_marks_target_files_not_modified(self):
+        preview = {
+            "request_fingerprint": "audit123",
+            "mode": "live_run",
+            "route": {
+                "lane": "audit",
+                "reason": "read-only audit uses reviewer-only lane with artifact gate",
+                "required_seats": ["claude", "hermes", "kimi"],
+            },
+            "request": {
+                "mode": "live_run",
+                "signals": {
+                    "read_only": True,
+                    "allowed_write_paths": ["docs/audits/report.md"],
+                    "required_artifact_paths": ["docs/audits/report.md"],
+                },
+            },
+            "signals": {
+                "read_only": True,
+                "allowed_write_paths": ["docs/audits/report.md"],
+                "required_artifact_paths": ["docs/audits/report.md"],
+            },
+            "capacity": [record("claude", "unknown"), record("hermes", "unknown"), record("kimi", "unknown")],
+            "preflight": {
+                "status": "warn",
+                "required_seats": ["claude", "hermes", "kimi"],
+                "blocking_seats": [],
+                "warnings": ["capacity unknown"],
+            },
+        }
+
+        result = budget_guard.evaluate_budget_guard(preview, mode="live_run")
+
+        payload = result["confirmation_payload"]
+        self.assertFalse(payload["files_may_be_modified"])
+        self.assertTrue(payload["read_only_task"])
+        self.assertEqual(payload["allowed_write_paths"], ["docs/audits/report.md"])
+        self.assertEqual(payload["required_artifact_paths"], ["docs/audits/report.md"])
+
+    def test_explicit_files_may_be_modified_override_wins_for_read_only_payload(self):
+        preview = {
+            "request_fingerprint": "audit124",
+            "mode": "live_run",
+            "route": {"lane": "audit", "required_seats": ["claude"]},
+            "request": {"mode": "live_run", "signals": {"read_only": True}},
+            "signals": {"read_only": True},
+            "files_may_be_modified": True,
+            "capacity": [record("claude", "unknown")],
+            "preflight": {"status": "warn", "required_seats": ["claude"], "blocking_seats": [], "warnings": []},
+        }
+
+        result = budget_guard.evaluate_budget_guard(preview, mode="live_run")
+
+        self.assertTrue(result["confirmation_payload"]["files_may_be_modified"])
+        self.assertTrue(result["confirmation_payload"]["read_only_task"])
+
+    def test_inferred_audit_lane_without_read_only_signal_is_read_only_in_payload(self):
+        preview = {
+            "request_fingerprint": "audit125",
+            "mode": "live_run",
+            "route": {"lane": "audit", "required_seats": ["claude"]},
+            "request": {"mode": "live_run"},
+            "capacity": [record("claude", "unknown")],
+            "preflight": {"status": "warn", "required_seats": ["claude"], "blocking_seats": [], "warnings": []},
+        }
+
+        result = budget_guard.evaluate_budget_guard(preview, mode="live_run")
+
+        self.assertFalse(result["confirmation_payload"]["files_may_be_modified"])
+        self.assertTrue(result["confirmation_payload"]["read_only_task"])
+
     def test_matching_confirmation_allows_warn_live_run(self):
         preview = dict(BASE_PREVIEW)
         preview["capacity"] = [record("kimi", "ok"), record("hermes", "soft_limited")]
