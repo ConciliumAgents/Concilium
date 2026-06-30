@@ -10,6 +10,8 @@ from pathlib import Path
 BIN = Path(__file__).resolve().parent
 sys.path.insert(0, str(BIN))
 
+import concilium_config  # noqa: E402
+import concilium_lanes  # noqa: E402
 import concilium_runtime  # noqa: E402
 
 
@@ -83,6 +85,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--confirmation-json", default="")
     parser.add_argument("--timeout", type=int, default=300)
     parser.add_argument("--seats", default="", help="Comma-separated native seats, for example claude,hermes,kimi.")
+    parser.add_argument("--yes", "--assume-approved", action="store_true", dest="yes")
     parser.add_argument("--commander", default="")
     parser.add_argument("--reviewer", default="")
     parser.add_argument("--max-iters", type=int, default=None)
@@ -119,7 +122,19 @@ def main(argv: list[str] | None = None) -> int:
             "review_executor": args.review_executor,
             "review_reviewer": args.review_reviewer,
         }
-        result = concilium_runtime.run_concilium_adapter(params, confirmation=confirmation)
+        runtime_kwargs = {}
+        if args.yes and mode == "live_run" and confirmation is None:
+            config = concilium_config.load_config(args.repo)
+            capacity = concilium_lanes.collect_capacity(args.repo, config)
+            preview = concilium_runtime.build_preflight(params, config=config, capacity=capacity)
+            payload = concilium_runtime.budget_guard.confirmation_payload(preview, mode="live_run")
+            confirmation = {
+                "accepted": True,
+                "request_fingerprint": payload["request_fingerprint"],
+                "confirmation_fingerprint": payload["confirmation_fingerprint"],
+            }
+            runtime_kwargs = {"config": config, "capacity": capacity}
+        result = concilium_runtime.run_concilium_adapter(params, confirmation=confirmation, **runtime_kwargs)
     except (ValueError, json.JSONDecodeError) as e:
         print(f"{type(e).__name__}: {e}", file=sys.stderr)
         return 4

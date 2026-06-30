@@ -105,6 +105,75 @@ class ConciliumRunTests(unittest.TestCase):
         self.assertEqual(params["review_reviewer"], "hermes")
         self.assertEqual(params["fast_agent"], "kimi")
 
+    def test_cli_yes_reuses_single_capacity_snapshot_for_confirmation(self):
+        capacity = [
+            {
+                "seat": "claude",
+                "provider": "anthropic",
+                "model": "opus",
+                "status": "unknown",
+                "source": "test",
+                "reason": "unknown",
+                "checked_at": "2026-06-30T00:00:00Z",
+                "reset_at": "",
+                "stale_after_seconds": 300,
+            },
+            {
+                "seat": "hermes",
+                "provider": "DeepSeek",
+                "model": "deepseek-v4-flash",
+                "status": "unknown",
+                "source": "test",
+                "reason": "unknown",
+                "checked_at": "2026-06-30T00:00:00Z",
+                "reset_at": "",
+                "stale_after_seconds": 300,
+            },
+            {
+                "seat": "kimi",
+                "provider": "moonshot",
+                "model": "kimi-code/kimi-for-coding",
+                "status": "unknown",
+                "source": "test",
+                "reason": "unknown",
+                "checked_at": "2026-06-30T00:00:00Z",
+                "reset_at": "",
+                "stale_after_seconds": 300,
+            },
+        ]
+        config = {
+            "routing": {"risk_posture": "balanced", "allow_auto_escalation": True},
+            "lanes": {
+                "audit": {"seats": ["claude", "hermes", "kimi"]},
+                "plan_review": {"seats": ["claude", "hermes", "kimi"], "max_rounds": 3},
+                "fast": {"default_single_agent": "kimi"},
+                "review": {"default_review_executor": "kimi", "default_review_reviewer": "hermes"},
+                "roundtable": {"commander": "claude", "seats": ["hermes", "kimi"], "reviewer": "hermes"},
+            },
+            "seat_models": {},
+        }
+        result = {"status": "blocked", "returncode": 2}
+        with tempfile.TemporaryDirectory() as td, \
+                mock.patch.object(concilium_run.concilium_config, "load_config", return_value=config), \
+                mock.patch.object(concilium_run.concilium_lanes, "collect_capacity", return_value=capacity), \
+                mock.patch.object(concilium_run.concilium_runtime, "run_concilium_adapter", return_value=result) as adapter, \
+                contextlib.redirect_stdout(io.StringIO()):
+            rc = concilium_run.main([
+                "--repo", td,
+                "--task", "Read-only audit the architecture and memory system. Do not modify files.",
+                "--live",
+                "--yes",
+                "--signals-json", '{"read_only":true,"risk":"high","file_count":3}',
+            ])
+
+        self.assertEqual(rc, 3)
+        self.assertIs(adapter.call_args.kwargs["capacity"], capacity)
+        self.assertIs(adapter.call_args.kwargs["config"], config)
+        confirmation = adapter.call_args.kwargs["confirmation"]
+        self.assertTrue(confirmation["accepted"])
+        self.assertTrue(confirmation["request_fingerprint"])
+        self.assertTrue(confirmation["confirmation_fingerprint"])
+
     def test_confirmation_required_cli_exits_three(self):
         result = {"status": "confirmation_required", "guard": {"status": "confirmation_required"}}
         with tempfile.TemporaryDirectory() as td, \
