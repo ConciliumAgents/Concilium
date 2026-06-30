@@ -148,12 +148,12 @@ class ConciliumLanesTests(unittest.TestCase):
                 "seat_models": {},
             }
             with mock.patch.object(concilium_lanes.process_runner, "run_process_group", side_effect=self._successful_process) as runner, \
-                    mock.patch.object(concilium_lanes.conductor, "write_roster", return_value=["claude", "kimi"]) as write_roster, \
+                    mock.patch.object(concilium_lanes.conductor, "write_roster", return_value=["claude", "hermes", "kimi"]) as write_roster, \
                     mock.patch.object(concilium_lanes.conductor, "set_participants") as set_participants, \
                     mock.patch.object(
                         concilium_lanes.conductor,
                         "timed_run_seat",
-                        side_effect=[(0, "VERDICT: PASS"), (0, "VERDICT: PASS")],
+                        side_effect=[(0, "VERDICT: PASS"), (0, "VERDICT: PASS"), (0, "VERDICT: PASS")],
                     ) as timed_run:
                 result = concilium_lanes.run_plan_review_lane(repo, "Review the plan.", "", config, timeout=12)
 
@@ -161,9 +161,12 @@ class ConciliumLanesTests(unittest.TestCase):
         self.assertIn("roundtable-init.sh", called_bins)
         self.assertIn("kb-refresh.sh", called_bins)
         write_roster.assert_called_once()
-        set_participants.assert_called_once_with(str(repo.resolve()), ["claude", "kimi"])
+        set_participants.assert_called_once_with(str(repo.resolve()), ["claude", "hermes", "kimi"])
         self.assertEqual(result["status"], "passed")
-        self.assertEqual([call.args[2:4] for call in timed_run.call_args_list], [("claude", "review"), ("kimi", "review")])
+        self.assertEqual(
+            [call.args[2:4] for call in timed_run.call_args_list],
+            [("claude", "review"), ("hermes", "review"), ("kimi", "review")],
+        )
 
     def test_plan_review_lane_ignores_inherited_loop_session_by_default(self):
         observed = {}
