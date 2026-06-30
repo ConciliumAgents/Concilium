@@ -82,7 +82,7 @@ PY
 }
 
 # ---- 从 agent 输出文件抽 VERDICT 行，落实退出码约定（0=PASS 2=BLOCK 1=ERR）----
-# 注：行首容忍空白；整行 Markdown 加粗也容忍，避免只读席位把最终裁决写成 **VERDICT: PASS**。
+# 注：行首容忍空白；Markdown 标题/加粗也容忍，避免只读席位把最终裁决写成 ## VERDICT: PASS 或 **VERDICT: PASS**。
 LOOP_VERDICT_LINE_RE='^[[:space:]]*(#{1,6}[[:space:]]*)?(\*\*)?VERDICT:[[:space:]]*(PASS|BLOCK)(\*\*)?[[:space:]]*$'
 LOOP_VERDICT_PASS_RE='^[[:space:]]*(#{1,6}[[:space:]]*)?(\*\*)?VERDICT:[[:space:]]*PASS(\*\*)?[[:space:]]*$'
 LOOP_VERDICT_BLOCK_RE='^[[:space:]]*(#{1,6}[[:space:]]*)?(\*\*)?VERDICT:[[:space:]]*BLOCK(\*\*)?[[:space:]]*$'
