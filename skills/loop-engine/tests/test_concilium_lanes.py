@@ -100,6 +100,7 @@ class ConciliumLanesTests(unittest.TestCase):
         set_participants.assert_called_once_with(str(pathlib.Path(td).resolve()), ["claude", "kimi"])
         self.assertEqual([call.args[2:4] for call in timed_run.call_args_list], [("claude", "review"), ("kimi", "review")])
         self.assertEqual([row["seat"] for row in result["seat_results"]], ["claude", "kimi"])
+        self.assertEqual([row["verdict"] for row in result["seat_results"]], ["PASS", "PASS"])
 
     def test_audit_lane_ignores_inherited_loop_session_by_default(self):
         observed = {}
@@ -167,6 +168,7 @@ class ConciliumLanesTests(unittest.TestCase):
             [call.args[2:4] for call in timed_run.call_args_list],
             [("claude", "review"), ("hermes", "review"), ("kimi", "review")],
         )
+        self.assertEqual([row["verdict"] for row in result["seat_results"]], ["PASS", "PASS", "PASS"])
 
     def test_plan_review_lane_ignores_inherited_loop_session_by_default(self):
         observed = {}

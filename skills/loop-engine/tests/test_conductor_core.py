@@ -281,6 +281,50 @@ class ConductorCoreTests(unittest.TestCase):
             self.assertEqual(row["iter"], 1)
             self.assertIsInstance(row["duration_seconds"], float)
             self.assertGreaterEqual(row["duration_seconds"], 0.0)
+        self.assertEqual(state["verdicts"], ["PASS"])
+        self.assertEqual(
+            state["seat_verdicts"],
+            [
+                {
+                    "iter": 1,
+                    "seat": "hermes",
+                    "mode": "review",
+                    "rc": 0,
+                    "verdict": "PASS",
+                }
+            ],
+        )
+
+    def test_review_block_is_recorded_in_roundtable_verdict_metadata(self):
+        reporter = QuietReporter()
+        with tempfile.TemporaryDirectory() as td:
+            repo = pathlib.Path(td)
+            init_repo(repo)
+
+            def fake_run_seat(agent, mode, repo_arg, brief="", extra=None, provider="", model=""):
+                if mode == "plan":
+                    return 0, '```json\n[{"agent":"kimi","subtask":"edit tracked.md"}]\n```'
+                if mode == "exec":
+                    pathlib.Path(repo_arg, "tracked.md").write_text("base\nchanged\n", encoding="utf-8")
+                    return 0, "edited"
+                if mode == "review":
+                    return 2, "Finding\nVERDICT: BLOCK\n"
+                return self.fail(f"unexpected call: {agent} {mode}")
+
+            with ConductorPatch(self, repo, fake_run_seat):
+                rc = conductor.run(str(repo), "Edit tracked.md", max_iters=1, reporter=reporter)
+
+            state = json.loads(
+                (repo / ".roundtable" / "sessions" / "unit-session" / "roundtable.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+
+        self.assertEqual(rc, 2)
+        self.assertEqual(state["verdicts"], ["BLOCK"])
+        self.assertEqual(state["seat_verdicts"][0]["seat"], "hermes")
+        self.assertEqual(state["seat_verdicts"][0]["mode"], "review")
+        self.assertEqual(state["seat_verdicts"][0]["verdict"], "BLOCK")
 
     def test_read_only_audit_task_routes_only_reviewers(self):
         calls = []
