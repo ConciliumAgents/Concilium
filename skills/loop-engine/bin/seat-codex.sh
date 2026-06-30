@@ -36,10 +36,13 @@ ${BRIEF:+本轮额外关注：${BRIEF}}
 - 若无 HIGH 或 CRITICAL 级问题 → VERDICT: PASS
 - 否则 → VERDICT: BLOCK"
     loop_log "codex 验证席入席 iter=${ITER}，运行 codex exec review"
+    RAW="${OUT}.tmp"
     set +e
-    ( cd "${REPO}" && codex exec review ${CODEX_OPTS[@]+"${CODEX_OPTS[@]}"} "${INSTR}" ) >"${OUT}" 2>&1
+    ( cd "${REPO}" && codex exec review ${CODEX_OPTS[@]+"${CODEX_OPTS[@]}"} "${INSTR}" ) >"${RAW}" 2>&1
     rc=$?
     set -e
+    loop_publish_minutes "${RAW}" "${OUT}"
+    rm -f "${RAW}"
     cat "${OUT}"
     loop_log "codex 退出码=${rc}，纪要: ${OUT}"
     if [ "${rc}" -ne 0 ]; then
@@ -64,11 +67,14 @@ ${BRIEF}
 - （本次项目专属教训；无则写\"（无）\"）
 "
     loop_log "codex 执行席入席 iter=${ITER}，运行 codex exec（workspace-write 沙箱）"
+    RAW="${OUT}.tmp"
     set +e
     # -s workspace-write：允许在工作区写文件（否则默认 read-only 会卡在写不动）
-    ( cd "${REPO}" && codex exec -s workspace-write ${CODEX_OPTS[@]+"${CODEX_OPTS[@]}"} "${INSTR}" ) >"${OUT}" 2>&1
+    ( cd "${REPO}" && codex exec -s workspace-write ${CODEX_OPTS[@]+"${CODEX_OPTS[@]}"} "${INSTR}" ) >"${RAW}" 2>&1
     rc=$?
     set -e
+    loop_publish_minutes "${RAW}" "${OUT}"
+    rm -f "${RAW}"
     cat "${OUT}"
     loop_log "codex 退出码=${rc}，纪要: ${OUT}"
     exit "${rc}"

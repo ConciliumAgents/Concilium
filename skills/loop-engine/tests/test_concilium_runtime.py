@@ -27,12 +27,12 @@ BASE_CONFIG = {
             "review_repair_limit": 1,
         },
         "audit": {
-            "default_reviewer": "codex",
-            "seats": ["codex", "claude"],
+            "default_reviewer": "claude",
+            "seats": ["claude", "hermes", "kimi"],
             "allowed_report_paths": ["docs/audits/*.md"],
         },
         "plan_review": {
-            "seats": ["claude", "kimi"],
+            "seats": ["claude", "hermes", "kimi"],
             "max_rounds": 3,
         },
         "roundtable": {
@@ -307,14 +307,46 @@ class ConciliumRuntimeAdapterTests(unittest.TestCase):
                 },
                 event_sink=sink,
                 config=BASE_CONFIG,
-                capacity=[capacity_record("codex", "ok"), capacity_record("claude", "ok")],
+                capacity=[
+                    capacity_record("claude", "ok"),
+                    capacity_record("hermes", "ok"),
+                    capacity_record("kimi", "ok"),
+                ],
             )
 
         self.assertEqual(result["route"]["lane"], "audit")
         seat_events = [event for event in sink.events if event["type"] == "seat"]
-        self.assertEqual([event["seat"] for event in seat_events], ["codex", "claude"])
-        self.assertEqual([event["backend_type"] for event in seat_events], ["external_cli", "external_cli"])
-        self.assertEqual([event["provider"] for event in seat_events], ["fixture", "fixture"])
+        self.assertEqual([event["seat"] for event in seat_events], ["claude", "hermes", "kimi"])
+        self.assertEqual([event["backend_type"] for event in seat_events], ["external_cli", "external_cli", "external_cli"])
+        self.assertEqual([event["provider"] for event in seat_events], ["fixture", "fixture", "fixture"])
+        self.assertNotIn("codex", [event["seat"] for event in seat_events])
+
+    def test_audit_defaults_do_not_include_codex_without_overlay(self):
+        with tempfile.TemporaryDirectory() as td:
+            result = concilium_runtime.build_preflight(
+                {
+                    "repo": td,
+                    "task": "Read-only audit the architecture.",
+                    "mode": "preview",
+                    "signals": {
+                        "risk": "high",
+                        "file_count": 9,
+                        "security_sensitive": False,
+                        "ambiguous": True,
+                        "read_only": True,
+                    },
+                },
+                config=BASE_CONFIG,
+                capacity=[
+                    capacity_record("claude", "ok"),
+                    capacity_record("hermes", "ok"),
+                    capacity_record("kimi", "ok"),
+                ],
+            )
+
+        self.assertEqual(result["route"]["lane"], "audit")
+        self.assertEqual(result["route"]["required_seats"], ["claude", "hermes", "kimi"])
+        self.assertNotIn("codex", result["route"]["required_seats"])
 
     def test_audit_seats_follow_request_overlay(self):
         with tempfile.TemporaryDirectory() as td:
@@ -417,7 +449,11 @@ class ConciliumRuntimeAdapterTests(unittest.TestCase):
                 },
                 event_sink=sink,
                 config=BASE_CONFIG,
-                capacity=[capacity_record("codex", "ok"), capacity_record("claude", "ok")],
+                capacity=[
+                    capacity_record("claude", "ok"),
+                    capacity_record("hermes", "ok"),
+                    capacity_record("kimi", "ok"),
+                ],
                 lane_executor=audit_executor,
             )
 
@@ -665,7 +701,11 @@ class ConciliumRuntimeAdapterTests(unittest.TestCase):
                 },
                 event_sink=concilium_runtime.concilium_events.ListEventSink(),
                 config=copy.deepcopy(BASE_CONFIG),
-                capacity=[capacity_record("claude", "ok"), capacity_record("kimi", "ok")],
+                capacity=[
+                    capacity_record("claude", "ok"),
+                    capacity_record("hermes", "ok"),
+                    capacity_record("kimi", "ok"),
+                ],
                 lane_executor=executor,
             )
 

@@ -253,6 +253,20 @@ def session_dir(repo: str) -> Path:
     return Path(repo) / ".roundtable" / "sessions" / sid
 
 
+def set_participants(repo: str | Path, seats: list[str]) -> None:
+    """用实际入席成员覆盖 roundtable.json 的 participants。失败不影响主流程。"""
+    try:
+        state_path = session_dir(str(repo)) / "roundtable.json"
+        state = {}
+        if state_path.exists():
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+        state["participants"] = list(seats)
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
+
 def _load_profiles(repo: str) -> dict:
     """读 roundtable-memory/ROSTER-PROFILES.md，返回 {seat: 画像正文}。
     文件不存在=正常（返回 {} → 退化纯出厂层）；读/解析异常 → 整体回退 {} + 警告（绝不半合并）。"""
@@ -769,6 +783,7 @@ def _run_read_only_audit(
         return c.get("provider", ""), c.get("model", "")
 
     review_seats = [reviewer] if reviewer and reviewer in seated else list(seated)
+    set_participants(repo, review_seats)
     reporter.start(repo, task, commander, "read-only-audit", 1)
     if not review_seats:
         reporter.log("[loop-engine] ⚠ 只读审计无可用座位")
@@ -844,6 +859,7 @@ def run(repo, task, commander="claude", reviewer="", max_iters=5, test_cmd="",
     _, o = sh_capture("roundtable-init.sh", repo, task); reporter.log(o)
     # 写在座花名册（探测 ∩ 勾选），并跑护栏校验
     seated = write_roster(repo, seats, seat_models)
+    set_participants(repo, seated)
     if audit_only or is_read_only_audit_task(task):
         return _run_read_only_audit(
             repo,
@@ -862,17 +878,6 @@ def run(repo, task, commander="claude", reviewer="", max_iters=5, test_cmd="",
     reviewer = _resolve_reviewer(seated, reviewer)
     executors = [a for a in seated if a not in EXEC_EXCLUDE and a != reviewer]
     reporter.start(repo, task, commander, reviewer, max_iters)
-    # 修复座位漂移：用实际在座覆盖 roundtable.json 的 participants。
-    # roundtable-init 写的是硬编码默认 ["claude","codex","hermes"]，会让后续轮的总指挥
-    # 误判谁在座（iter-2 曾据此把活派给已下桌、且连接故障的 codex，导致裁决失准）。
-    try:
-        _sf = session_dir(repo) / "roundtable.json"
-        if _sf.exists():
-            _d = json.loads(_sf.read_text())
-            _d["participants"] = seated
-            _sf.write_text(json.dumps(_d, ensure_ascii=False, indent=2))
-    except Exception:
-        pass
     if seated:
         reporter.log(f"[loop-engine] 在座: {', '.join(seated)}；验证席: {reviewer or '（无）'}；"
                      f"执行池: {', '.join(executors) or '（空）'}")

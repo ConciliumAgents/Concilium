@@ -33,6 +33,11 @@ def review_lane_env(timeout: int, session: str) -> dict:
     return env
 
 
+def filter_available_seats(requested: list[str], seated: list[str]) -> list[str]:
+    available = set(seated)
+    return [seat for seat in requested if seat in available]
+
+
 def run_cmd(args: list[str], cwd: Path, env: dict, timeout: int) -> tuple[int, str]:
     result = process_runner.run_process_group(args, cwd=cwd, env=env, timeout=timeout)
     return int(result["returncode"]), str(result["output"])
@@ -64,19 +69,6 @@ def set_iteration(repo: str | Path, iteration: int) -> None:
     state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def set_participants(repo: str | Path, seats: list[str]) -> None:
-    state_path = Path(repo) / ".roundtable" / "sessions" / os.environ.get("LOOP_SESSION", "default") / "roundtable.json"
-    state = {}
-    if state_path.exists():
-        try:
-            state = json.loads(state_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            state = {}
-    state["participants"] = seats
-    state_path.parent.mkdir(parents=True, exist_ok=True)
-    state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
-
-
 def init_session(
     repo: str | Path,
     task: str,
@@ -89,8 +81,8 @@ def init_session(
     rc, out = run_cmd([str(BIN / "roundtable-init.sh"), str(repo), task], BIN, env, timeout)
     if rc != 0:
         raise RuntimeError(out.strip() or "roundtable-init.sh failed")
-    conductor.write_roster(str(repo), seats=seats, seat_models=seat_models or {})
-    set_participants(repo, seats)
+    seated = filter_available_seats(seats, conductor.write_roster(str(repo), seats=seats, seat_models=seat_models or {}))
+    conductor.set_participants(repo, seated)
     refresh_kb(repo, test_cmd, env, timeout)
 
 

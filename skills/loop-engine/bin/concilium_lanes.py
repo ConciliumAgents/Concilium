@@ -78,6 +78,11 @@ def _seat_timeout_env(timeout: int, config: dict) -> dict[str, str]:
     return env
 
 
+def _filter_available_seats(requested: list[str], seated: list[str]) -> list[str]:
+    available = set(seated)
+    return [seat for seat in requested if seat in available]
+
+
 def collect_capacity(repo: str | Path, config: dict) -> list[dict]:
     del repo
     result = process_runner.run_process_group(
@@ -113,7 +118,8 @@ def run_fast_lane(
         rc, out = _run_bin([str(BIN / "roundtable-init.sh"), str(repo_path), task], env, timeout)
         if rc != 0:
             raise RuntimeError(out.strip() or "roundtable-init.sh failed")
-        conductor.write_roster(str(repo_path), seats=[agent], seat_models=seat_models or {})
+        seated = _filter_available_seats([agent], conductor.write_roster(str(repo_path), seats=[agent], seat_models=seat_models or {}))
+        conductor.set_participants(str(repo_path), seated)
         refresh_rc, refresh_out = _run_bin([str(BIN / "kb-refresh.sh"), str(repo_path), test_cmd], env, timeout)
         if refresh_rc != 0:
             raise RuntimeError(refresh_out.strip() or "kb-refresh.sh failed")
@@ -176,13 +182,14 @@ def run_audit_lane(repo: str | Path, task: str, test_cmd: str, config: dict, tim
         rc, out = _run_bin([str(BIN / "roundtable-init.sh"), str(repo_path), task], env, timeout)
         if rc != 0:
             raise RuntimeError(out.strip() or "roundtable-init.sh failed")
-        conductor.write_roster(str(repo_path), seats=seats, seat_models=config.get("seat_models", {}))
+        seated = _filter_available_seats(seats, conductor.write_roster(str(repo_path), seats=seats, seat_models=config.get("seat_models", {})))
+        conductor.set_participants(str(repo_path), seated)
         refresh_rc, refresh_out = _run_bin([str(BIN / "kb-refresh.sh"), str(repo_path), test_cmd], env, timeout)
         if refresh_rc != 0:
             raise RuntimeError(refresh_out.strip() or "kb-refresh.sh failed")
 
         seat_results = []
-        for seat in seats:
+        for seat in seated:
             model_config = dict(config.get("seat_models", {}).get(seat, {}))
             provider = str(model_config.get("provider", ""))
             model = str(model_config.get("model", ""))
@@ -328,14 +335,30 @@ def run_plan_review_lane(repo: str | Path, task: str, test_cmd: str, config: dic
             "unresolved_blockers": [{"severity": "HIGH", "summary": f"plan_path is not found: {plan_path}"}],
         }
 
-    baseline_delta = concilium_artifacts.collect_delta(repo_path).get("delta_paths", [])
-    before_hash = hashlib.sha256(plan_file.read_bytes()).hexdigest()
     plan_rel = plan_file.relative_to(repo_path).as_posix()
-    before_snapshot = concilium_artifacts.hash_delta_snapshot(repo_path, include_paths=[plan_rel])
+    env = dict(os.environ)
+    env["LOOP_SESSION"] = env.get("LOOP_SESSION") or f"plan-review-{_slug(task)}"
+    env["LOOP_ARCHIVE"] = "0"
+    env.update(_seat_timeout_env(timeout, config))
+    scoped = {key: env[key] for key in ("LOOP_SESSION", "LOOP_ARCHIVE")}
+    scoped.update(_seat_timeout_env(timeout, config))
     seat_results = []
     blockers = []
-    with _scoped_env(_seat_timeout_env(timeout, config)):
-        for seat in seats:
+    with _scoped_env(scoped):
+        rc, out = _run_bin([str(BIN / "roundtable-init.sh"), str(repo_path), task], env, timeout)
+        if rc != 0:
+            raise RuntimeError(out.strip() or "roundtable-init.sh failed")
+        seated = _filter_available_seats(seats, conductor.write_roster(str(repo_path), seats=seats, seat_models=config.get("seat_models", {})))
+        conductor.set_participants(str(repo_path), seated)
+        refresh_rc, refresh_out = _run_bin([str(BIN / "kb-refresh.sh"), str(repo_path), ""], env, timeout)
+        if refresh_rc != 0:
+            raise RuntimeError(refresh_out.strip() or "kb-refresh.sh failed")
+
+        baseline_delta = concilium_artifacts.collect_delta(repo_path).get("delta_paths", [])
+        before_hash = hashlib.sha256(plan_file.read_bytes()).hexdigest()
+        before_snapshot = concilium_artifacts.hash_delta_snapshot(repo_path, include_paths=[plan_rel])
+
+        for seat in seated:
             model_config = dict(config.get("seat_models", {}).get(seat, {}))
             provider = str(model_config.get("provider", ""))
             model = str(model_config.get("model", ""))
@@ -357,17 +380,17 @@ def run_plan_review_lane(repo: str | Path, task: str, test_cmd: str, config: dic
             if int(rc) == 2:
                 blockers.append({"seat": seat, "severity": "HIGH", "summary": capacity_status.redact(str(output)[-500:])})
 
-    gate = concilium_artifacts.evaluate_artifact_gate(
-        repo_path,
-        required_artifact_paths=[],
-        allowed_write_paths=[],
-        baseline_delta_paths=baseline_delta,
-        allow_unlisted_required=False,
-        allow_unlisted_delta=False,
-    )
-    fingerprint_changed = hashlib.sha256(plan_file.read_bytes()).hexdigest() != before_hash
-    after_snapshot = concilium_artifacts.hash_delta_snapshot(repo_path, include_paths=[plan_rel])
-    non_plan_review_paths = concilium_artifacts.changed_snapshot_paths(before_snapshot, after_snapshot, allowed_paths=[plan_rel])
+        gate = concilium_artifacts.evaluate_artifact_gate(
+            repo_path,
+            required_artifact_paths=[],
+            allowed_write_paths=[],
+            baseline_delta_paths=baseline_delta,
+            allow_unlisted_required=False,
+            allow_unlisted_delta=False,
+        )
+        fingerprint_changed = hashlib.sha256(plan_file.read_bytes()).hexdigest() != before_hash
+        after_snapshot = concilium_artifacts.hash_delta_snapshot(repo_path, include_paths=[plan_rel])
+        non_plan_review_paths = concilium_artifacts.changed_snapshot_paths(before_snapshot, after_snapshot, allowed_paths=[plan_rel])
     if gate["status"] != "passed" or fingerprint_changed or non_plan_review_paths:
         artifact_blockers = []
         if fingerprint_changed:

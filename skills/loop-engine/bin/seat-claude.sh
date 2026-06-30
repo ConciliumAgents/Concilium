@@ -48,10 +48,13 @@ ${BRIEF:+补充：${BRIEF}}
 \`\`\`
 只在该 JSON 块里放计划，agent 字段必须是 claude/codex/hermes/kimi 之一；执行子任务请只派 hermes/kimi。"
     loop_log "Claude 总指挥席入席 iter=${ITER}（plan，只读）"
+    RAW="${OUT}.tmp"
     set +e
-    ( cd "${REPO}" && claude -p "${INSTR}" "${CL_OPTS[@]}" ${RO_DIRS[@]+"${RO_DIRS[@]}"} --permission-mode plan ) >"${OUT}" 2>&1
+    ( cd "${REPO}" && claude -p "${INSTR}" "${CL_OPTS[@]}" ${RO_DIRS[@]+"${RO_DIRS[@]}"} --permission-mode plan ) >"${RAW}" 2>&1
     rc=$?
     set -e
+    loop_publish_minutes "${RAW}" "${OUT}"
+    rm -f "${RAW}"
     cat "${OUT}"
     loop_log "claude 退出码=${rc}，纪要: ${OUT}"
     exit "${rc}"
@@ -73,10 +76,13 @@ ${BRIEF:+补充：${BRIEF}}
 - （本次项目专属教训；无则写\"（无）\"）
 "
     loop_log "Claude 执行席入席 iter=${ITER}（exec, acceptEdits）"
+    RAW="${OUT}.tmp"
     set +e
-    ( cd "${REPO}" && claude -p "${INSTR}" "${CL_OPTS[@]}" --permission-mode acceptEdits ) >"${OUT}" 2>&1
+    ( cd "${REPO}" && claude -p "${INSTR}" "${CL_OPTS[@]}" --permission-mode acceptEdits ) >"${RAW}" 2>&1
     rc=$?
     set -e
+    loop_publish_minutes "${RAW}" "${OUT}"
+    rm -f "${RAW}"
     cat "${OUT}"
     loop_log "claude 退出码=${rc}，纪要: ${OUT}"
     exit "${rc}"
@@ -91,10 +97,13 @@ ${BRIEF:+补充：${BRIEF}}
 ${BRIEF:+额外关注：${BRIEF}}
 **最后单独成行输出**：无 HIGH/CRITICAL → VERDICT: PASS；否则 → VERDICT: BLOCK"
     loop_log "Claude 验证席入席 iter=${ITER}（review，只读）"
+    RAW="${OUT}.tmp"
     set +e
-    ( cd "${REPO}" && claude -p "${INSTR}" "${CL_OPTS[@]}" ${RO_DIRS[@]+"${RO_DIRS[@]}"} --permission-mode plan ) >"${OUT}" 2>&1
+    ( cd "${REPO}" && claude -p "${INSTR}" "${CL_OPTS[@]}" ${RO_DIRS[@]+"${RO_DIRS[@]}"} --permission-mode plan ) >"${RAW}" 2>&1
     rc=$?
     set -e
+    loop_publish_minutes "${RAW}" "${OUT}"
+    rm -f "${RAW}"
     cat "${OUT}"
     loop_log "claude 退出码=${rc}，纪要: ${OUT}"
     [ "${rc}" -eq 0 ] || { loop_warn "claude 进程非零退出 rc=${rc}，判 ERR"; exit 1; }

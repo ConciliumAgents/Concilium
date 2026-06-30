@@ -31,6 +31,16 @@ class ConciliumConfigTests(unittest.TestCase):
         self.assertEqual(seat_modes["codex"]["plan"], 600)
         self.assertEqual(seat_modes["codex"]["review"], 600)
 
+    def test_default_audit_and_plan_review_seats_are_native_and_heterogeneous(self):
+        with tempfile.TemporaryDirectory() as td:
+            config = concilium_config.load_config(td)
+
+        self.assertEqual(config["lanes"]["audit"]["default_reviewer"], "claude")
+        self.assertEqual(config["lanes"]["audit"]["seats"], ["claude", "hermes", "kimi"])
+        self.assertEqual(config["lanes"]["plan_review"]["seats"], ["claude", "hermes", "kimi"])
+        self.assertNotIn("codex", config["lanes"]["audit"]["seats"])
+        self.assertNotIn("codex", config["lanes"]["plan_review"]["seats"])
+
     def test_timeout_overrides_must_be_positive_numbers(self):
         with tempfile.TemporaryDirectory() as td:
             path = pathlib.Path(td) / "bad.json"

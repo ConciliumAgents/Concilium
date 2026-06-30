@@ -70,6 +70,13 @@ Product configuration should expose this as:
 - `audit.default_reviewer`
 - `audit.allowed_report_paths`
 
+Bundled defaults use native heterogeneous reviewer seats:
+
+- `audit.default_reviewer`: `claude`
+- `audit.seats`: `claude`, `hermes`, `kimi`
+
+`codex` remains a valid explicit seat, but it is not part of the bundled Audit Lane default. This prevents a host Codex session from accidentally presenting same-source Codex review as a heterogeneous Concilium audit.
+
 Each seat event must identify its actual backend, not only its display seat name. A Codex-hosted subagent review is `codex_subagent`; a real `seat-*.sh` native CLI seat, including `seat-codex.sh`, is `external_cli`; a configured ordinary lane seat is `configured_seat`.
 
 Current implementation status: the runtime now routes read-only audit tasks to Audit Lane, dispatches configured reviewer seats through the existing external `seat-*.sh` runner, exposes seat backend provenance, writes a combined audit report when `required_artifact_paths` is supplied, and enforces the report artifact gate. A Claude/Kimi/Hermes/Codex audit seat marked `external_cli` means the native CLI runner was invoked; a Codex-hosted internal review must be marked separately as `codex_subagent`.
@@ -81,6 +88,7 @@ Direct legacy `roundtable` / `conductor.py` invocations now apply the same first
 - no commander planning step;
 - no `exec` subtasks;
 - selected seats run in `review` mode only;
+- `participants` is rewritten from the hardcoded initializer default to the actual seated reviewer list;
 - strict artifact gate fails the run on any project delta outside explicit allowed paths.
 
 The guard exists for backward compatibility. Concilium Audit Lane remains the preferred product entry point because it has structured routing, preflight, seat provenance, and report artifact semantics.
@@ -99,6 +107,14 @@ The host loop is:
 4. re-run review until all available reviewers PASS or `plan_review.max_rounds` is reached.
 
 Default `plan_review.max_rounds` is `3`. The runtime enforces that review rounds do not change the plan file or other project files, and the host-loop helper enforces that revision steps change only the reviewed plan artifact.
+
+Bundled defaults use `claude`, `hermes`, and `kimi` for Plan Review Lane. As with Audit Lane, `codex` is explicit opt-in through config/API/CLI override, not the default. CLI callers can set native seats per run with:
+
+```bash
+python3 skills/loop-engine/bin/concilium-run.py --seats claude,hermes,kimi ...
+```
+
+Plan Review Lane is reviewer-only: selected seats must be called in `review` mode, and session metadata must reflect the actual seats that were seated and invoked.
 
 ## Routing Table
 
@@ -135,6 +151,12 @@ Minimum setup questions:
 6. Required verification commands or evidence types.
 
 The UI should make lane choice visible before execution and let users override it per task.
+
+## Session And Scratch Privacy Contract
+
+`roundtable.json.participants` means actual native seats for the current session, after availability filtering. It must not include host-side planning helpers, unavailable seats, or seats that were merely hardcoded by `roundtable-init.sh`.
+
+Seat transcripts under `.roundtable/sessions/<sid>/minutes/` are redacted by default before publication. Credential-like strings are filtered through the shared Concilium redactor. Raw transcripts are only retained when `LOOP_KEEP_RAW_MINUTES=1` is explicitly set for local debugging.
 
 ## Implemented Router Contract
 

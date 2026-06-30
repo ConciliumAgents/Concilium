@@ -86,10 +86,13 @@ ${BRIEF:+补充：${BRIEF}}
 \`\`\`
 只在该 JSON 块里放计划，agent 字段必须是 claude/codex/hermes/kimi 之一；执行子任务请只派 hermes/kimi。"
     loop_log "Kimi 总指挥席入席 iter=${ITER}（plan，只读）"
+    RAW="${OUT}.tmp"
     set +e
-    ( cd "${REPO}" && kimi -p "${INSTR}" ${KM_OPTS[@]+"${KM_OPTS[@]}"} ) >"${OUT}" 2>&1
+    ( cd "${REPO}" && kimi -p "${INSTR}" ${KM_OPTS[@]+"${KM_OPTS[@]}"} ) >"${RAW}" 2>&1
     rc=$?
     set -e
+    loop_publish_minutes "${RAW}" "${OUT}"
+    rm -f "${RAW}"
     cat "${OUT}"
     loop_log "kimi 退出码=${rc}，纪要: ${OUT}"
     _km_clean "${OUT}"
@@ -112,10 +115,13 @@ ${BRIEF:+补充：${BRIEF}}
 - （本次项目专属教训；无则写\"（无）\"）
 "
     loop_log "Kimi 执行席入席 iter=${ITER}（exec，-p 默认权限即可落盘）"
+    RAW="${OUT}.tmp"
     set +e
-    ( cd "${REPO}" && kimi -p "${INSTR}" ${KM_OPTS[@]+"${KM_OPTS[@]}"} ) >"${OUT}" 2>&1
+    ( cd "${REPO}" && kimi -p "${INSTR}" ${KM_OPTS[@]+"${KM_OPTS[@]}"} ) >"${RAW}" 2>&1
     rc=$?
     set -e
+    loop_publish_minutes "${RAW}" "${OUT}"
+    rm -f "${RAW}"
     cat "${OUT}"
     loop_log "kimi 退出码=${rc}，纪要: ${OUT}"
     _km_clean "${OUT}"
@@ -131,10 +137,13 @@ ${BRIEF:+补充：${BRIEF}}
 按严重度标注：[CRITICAL]/[HIGH]/[MEDIUM]/[LOW]。
 **最后必须单独成行输出**：无 HIGH/CRITICAL → VERDICT: PASS；否则 → VERDICT: BLOCK"
     loop_log "Kimi 验证席入席 iter=${ITER}（review，只读）"
+    RAW="${OUT}.tmp"
     set +e
-    ( cd "${REPO}" && kimi -p "${INSTR}" ${KM_OPTS[@]+"${KM_OPTS[@]}"} ) >"${OUT}" 2>&1
+    ( cd "${REPO}" && kimi -p "${INSTR}" ${KM_OPTS[@]+"${KM_OPTS[@]}"} ) >"${RAW}" 2>&1
     rc=$?
     set -e
+    loop_publish_minutes "${RAW}" "${OUT}"
+    rm -f "${RAW}"
     cat "${OUT}"
     loop_log "kimi 退出码=${rc}，纪要: ${OUT}"
     _km_clean "${OUT}"

@@ -50,10 +50,13 @@ case "${MODE}" in
 - 若无 HIGH 或 CRITICAL 级问题 → VERDICT: PASS
 - 否则 → VERDICT: BLOCK"
     loop_log "hermes 评审席入席 iter=${ITER} provider=${PROV:-默认}，只读评审"
+    RAW="${OUT}.tmp"
     set +e
-    ( cd "${REPO}" && hermes ${EXTRA[@]+"${EXTRA[@]}"} -z "${INSTR}" ) >"${OUT}" 2>&1
+    ( cd "${REPO}" && hermes ${EXTRA[@]+"${EXTRA[@]}"} -z "${INSTR}" ) >"${RAW}" 2>&1
     rc=$?
     set -e
+    loop_publish_minutes "${RAW}" "${OUT}"
+    rm -f "${RAW}"
     cat "${OUT}"
     loop_log "hermes 退出码=${rc}，纪要: ${OUT}"
     _hs_clean "${HS_PRE}"
@@ -79,10 +82,13 @@ ${BRIEF}
 - （本次项目专属教训；无则写\"（无）\"）
 "
     loop_log "hermes 执行席入席 iter=${ITER}，hermes -z --yolo"
+    RAW="${OUT}.tmp"
     set +e
-    ( cd "${REPO}" && hermes ${EXTRA[@]+"${EXTRA[@]}"} -z "${INSTR}" --yolo ) >"${OUT}" 2>&1
+    ( cd "${REPO}" && hermes ${EXTRA[@]+"${EXTRA[@]}"} -z "${INSTR}" --yolo ) >"${RAW}" 2>&1
     rc=$?
     set -e
+    loop_publish_minutes "${RAW}" "${OUT}"
+    rm -f "${RAW}"
     cat "${OUT}"
     loop_log "hermes 退出码=${rc}，纪要: ${OUT}"
     _hs_clean "${HS_PRE}"

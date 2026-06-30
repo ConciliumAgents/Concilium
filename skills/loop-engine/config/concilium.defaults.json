@@ -12,12 +12,12 @@
       "review_repair_limit": 1
     },
     "audit": {
-      "default_reviewer": "codex",
-      "seats": ["codex", "claude"],
+      "default_reviewer": "claude",
+      "seats": ["claude", "hermes", "kimi"],
       "allowed_report_paths": ["docs/audits/*.md"]
     },
     "plan_review": {
-      "seats": ["claude", "kimi", "hermes", "codex"],
+      "seats": ["claude", "hermes", "kimi"],
       "max_rounds": 3
     },
     "roundtable": {

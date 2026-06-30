@@ -20,6 +20,9 @@ export LC_ALL="en_US.UTF-8"
 # 会议桌目录名（黑板）
 LOOP_TABLE_DIRNAME=".roundtable"
 
+# 当前 loop-engine/bin 目录。函数可能被 source 到不同调用脚本里，故在库内自算。
+LOOP_BIN_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # ---- 日志：一律走 stderr，stdout 留给 agent 原始输出 ----
 loop_log()  { printf '\033[2m[loop-engine] %s\033[0m\n' "$*" >&2; }
 loop_warn() { printf '\033[33m[loop-engine] %s\033[0m\n' "$*" >&2; }
@@ -104,6 +107,25 @@ loop_codex_verdict() {
 
 # ---- 通用：要求某命令存在 ----
 loop_need() { command -v "$1" >/dev/null 2>&1 || loop_die "找不到依赖命令: $1"; }
+
+# ---- 发布座位纪要：默认写脱敏版本；仅显式 LOOP_KEEP_RAW_MINUTES=1 时保留 .raw ----
+loop_publish_minutes() {
+  local raw="$1" out="$2" tmp
+  [ -f "$raw" ] || loop_die "待发布纪要不存在: $raw"
+  if [ "${LOOP_KEEP_RAW_MINUTES:-0}" = "1" ]; then
+    cp "$raw" "${out}.raw"
+  fi
+  tmp="${out}.redacted.$$"
+  if command -v python3 >/dev/null 2>&1 && python3 "${LOOP_BIN_DIR}/redact-text.py" <"$raw" >"$tmp" 2>/dev/null; then
+    mv "$tmp" "$out"
+  else
+    rm -f "$tmp"
+    {
+      printf '%s\n' "[loop-engine] minutes redaction failed; raw transcript withheld."
+      printf '%s\n' "[loop-engine] Re-run with LOOP_KEEP_RAW_MINUTES=1 only for local debugging."
+    } >"$out"
+  fi
+}
 
 # ---- 给座位发言的统一头部（让外脑知道黑板在哪、规矩是什么）----
 # 用法: loop_seat_preamble <repo>

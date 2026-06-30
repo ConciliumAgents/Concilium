@@ -13,6 +13,10 @@ sys.path.insert(0, str(BIN))
 import concilium_runtime  # noqa: E402
 
 
+def _split_seats(value: str) -> list[str]:
+    return [part.strip() for part in value.split(",") if part.strip()]
+
+
 def run_concilium(
     repo: str | Path,
     task: str,
@@ -23,6 +27,7 @@ def run_concilium(
     timeout: int = 300,
     mode: str | None = None,
     confirmation: dict | None = None,
+    seats: list[str] | None = None,
 ) -> dict:
     selected_mode = "preview" if dry_run or print_route else mode or "live_run"
     params = {
@@ -35,6 +40,7 @@ def run_concilium(
         "live": selected_mode == "live_run",
         "signals": signals or {},
         "timeout": timeout,
+        "seats": list(seats or []),
     }
     return concilium_runtime.run_concilium_adapter(params, confirmation=confirmation)
 
@@ -64,6 +70,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--signals-json", default="")
     parser.add_argument("--confirmation-json", default="")
     parser.add_argument("--timeout", type=int, default=300)
+    parser.add_argument("--seats", default="", help="Comma-separated native seats, for example claude,hermes,kimi.")
     args = parser.parse_args(argv)
 
     if args.live and args.dry_run:
@@ -86,6 +93,7 @@ def main(argv: list[str] | None = None) -> int:
             "live": args.live,
             "signals": signals or {},
             "timeout": args.timeout,
+            "seats": _split_seats(args.seats),
         }
         result = concilium_runtime.run_concilium_adapter(params, confirmation=confirmation)
     except (ValueError, json.JSONDecodeError) as e:

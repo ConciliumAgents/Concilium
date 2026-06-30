@@ -86,3 +86,27 @@ Redacted observed result on 2026-06-30:
 ## Next Decision Trigger
 
 Start Phase 5 when the user wants the native menu bar shell and setup/config write UX. The Phase 5 entry gate should reuse this Phase 4 adapter and guard instead of moving routing or capacity policy into UI code.
+
+## Post-Closeout Native Roundtable Guard
+
+After the first dogfood audits, Concilium gained an additional guard against accidentally degrading a roundtable into same-source Codex review:
+
+- Audit Lane default seats are `claude`, `hermes`, and `kimi`; `codex` is explicit opt-in.
+- Plan Review Lane default seats are `claude`, `hermes`, and `kimi`; `codex` is explicit opt-in.
+- `concilium-run.py --seats claude,hermes,kimi` can override seats per run.
+- Read-only Audit Lane and Plan Review Lane call selected seats in `review` mode only.
+- `roundtable.json.participants` is rewritten to the actual seated native seats.
+- Seat minutes are redacted by default; `LOOP_KEEP_RAW_MINUTES=1` is required to preserve `.raw` transcripts for local debugging.
+
+Deployment verification before a dogfood run is considered current:
+
+```bash
+git status --short
+python3 -m unittest discover -s skills/loop-engine/tests -p 'test_*.py'
+./roundtable --version
+./roundtable --doctor
+/Users/melee/.local/bin/roundtable --version
+/Users/melee/.local/bin/roundtable --doctor
+```
+
+Only after merge or launcher repointing should the two `--version` outputs show the same intended code line. `--doctor` must continue to probe seats; launcher diagnostics are printed on stderr so the roster output remains usable.

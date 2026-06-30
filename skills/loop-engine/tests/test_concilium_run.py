@@ -42,6 +42,40 @@ class ConciliumRunTests(unittest.TestCase):
         self.assertTrue(params["dry_run"])
         self.assertTrue(params["print_route"])
 
+    def test_run_concilium_passes_explicit_seats_to_adapter(self):
+        preview = {
+            "status": "preview",
+            "route": {"lane": "audit", "required_seats": ["claude", "hermes", "kimi"]},
+        }
+        with tempfile.TemporaryDirectory() as td, \
+                mock.patch.object(concilium_run.concilium_runtime, "run_concilium_adapter", return_value=preview) as adapter:
+            concilium_run.run_concilium(
+                repo=td,
+                task="Read-only audit the architecture.",
+                dry_run=True,
+                seats=["claude", "hermes", "kimi"],
+            )
+
+        self.assertEqual(adapter.call_args.args[0]["seats"], ["claude", "hermes", "kimi"])
+
+    def test_cli_seats_comma_list_reaches_adapter(self):
+        result = {
+            "status": "preview",
+            "route": {"lane": "audit", "required_seats": ["claude", "hermes", "kimi"]},
+        }
+        with tempfile.TemporaryDirectory() as td, \
+                mock.patch.object(concilium_run.concilium_runtime, "run_concilium_adapter", return_value=result) as adapter, \
+                contextlib.redirect_stdout(io.StringIO()):
+            rc = concilium_run.main([
+                "--repo", td,
+                "--task", "Read-only audit the architecture.",
+                "--print-route",
+                "--seats", "claude,hermes,kimi",
+            ])
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(adapter.call_args.args[0]["seats"], ["claude", "hermes", "kimi"])
+
     def test_confirmation_required_cli_exits_three(self):
         result = {"status": "confirmation_required", "guard": {"status": "confirmation_required"}}
         with tempfile.TemporaryDirectory() as td, \

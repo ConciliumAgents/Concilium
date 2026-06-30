@@ -99,6 +99,22 @@ class ConductorPatch:
 
 
 class ConductorCoreTests(unittest.TestCase):
+    def test_set_participants_replaces_roundtable_state_participants(self):
+        with tempfile.TemporaryDirectory() as td, mock.patch.dict(os.environ, {"LOOP_SESSION": "unit-session"}, clear=False):
+            repo = pathlib.Path(td)
+            state_path = repo / ".roundtable" / "sessions" / "unit-session" / "roundtable.json"
+            state_path.parent.mkdir(parents=True)
+            state_path.write_text(
+                json.dumps({"iter": 1, "participants": ["claude", "codex", "hermes"]}),
+                encoding="utf-8",
+            )
+
+            conductor.set_participants(repo, ["claude", "hermes", "kimi"])
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(state["participants"], ["claude", "hermes", "kimi"])
+        self.assertEqual(state["iter"], 1)
+
     def test_run_seat_uses_seat_mode_timeout_override(self):
         observed_timeouts = []
 
@@ -318,6 +334,35 @@ class ConductorCoreTests(unittest.TestCase):
 
         self.assertEqual(rc, 0)
         self.assertEqual({mode for _agent, mode in calls}, {"review"})
+
+    def test_audit_only_updates_participants_before_read_only_return(self):
+        reporter = QuietReporter()
+        with tempfile.TemporaryDirectory() as td:
+            repo = pathlib.Path(td)
+            init_repo(repo)
+
+            def fake_run_seat(agent, mode, repo_arg, brief="", extra=None, provider="", model=""):
+                if mode != "review":
+                    return self.fail(f"audit_only must not call {mode}")
+                return 0, "VERDICT: PASS\n"
+
+            with ConductorPatch(self, repo, fake_run_seat):
+                rc = conductor.run(
+                    str(repo),
+                    "Inspect architecture.",
+                    max_iters=2,
+                    reporter=reporter,
+                    audit_only=True,
+                )
+
+            state = json.loads(
+                (repo / ".roundtable" / "sessions" / "unit-session" / "roundtable.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(state["participants"], ["claude", "hermes", "kimi"])
 
     def test_read_only_audit_blocks_disallowed_delta(self):
         reporter = QuietReporter()

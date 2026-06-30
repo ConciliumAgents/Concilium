@@ -24,11 +24,11 @@ class LaneRouterTests(unittest.TestCase):
                     "review_repair_limit": 1,
                 },
                 "audit": {
-                    "default_reviewer": "codex",
-                    "seats": ["codex", "claude"],
+                    "default_reviewer": "claude",
+                    "seats": ["claude", "hermes", "kimi"],
                     "allowed_report_paths": ["docs/audits/*.md"],
                 },
-                "plan_review": {"seats": ["claude", "kimi", "hermes", "codex"], "max_rounds": 3},
+                "plan_review": {"seats": ["claude", "hermes", "kimi"], "max_rounds": 3},
                 "roundtable": {"commander": "claude", "reviewer": "", "seats": ["claude", "hermes", "kimi"]},
             },
             "routing": {"risk_posture": "balanced", "allow_auto_escalation": True, "allow_auto_downgrade": False},
@@ -79,7 +79,8 @@ class LaneRouterTests(unittest.TestCase):
         )
 
         self.assertEqual(result["lane"], "audit")
-        self.assertEqual(result["required_seats"], ["codex", "claude"])
+        self.assertEqual(result["required_seats"], ["claude", "hermes", "kimi"])
+        self.assertNotIn("codex", result["required_seats"])
         self.assertIn("read-only", result["reason"])
 
     def test_execution_plan_review_routes_to_plan_review_lane(self):
@@ -90,7 +91,20 @@ class LaneRouterTests(unittest.TestCase):
         )
 
         self.assertEqual(result["lane"], "plan_review")
+        self.assertEqual(result["required_seats"], ["claude", "hermes", "kimi"])
+        self.assertNotIn("codex", result["required_seats"])
         self.assertIn("review", result["reason"])
+
+    def test_plan_review_defaults_to_native_heterogeneous_seats_without_codex(self):
+        result = lane_router.route_task(
+            "审核执行方案 docs/superpowers/plans/example.md，成员 BLOCK 后修改方案并复审",
+            {"plan_review": True, "plan_path": "docs/superpowers/plans/example.md"},
+            self.base_config(),
+        )
+
+        self.assertEqual(result["lane"], "plan_review")
+        self.assertEqual(result["required_seats"], ["claude", "hermes", "kimi"])
+        self.assertNotIn("codex", result["required_seats"])
 
     def test_preflight_block_does_not_silent_downgrade(self):
         result = lane_router.apply_preflight(

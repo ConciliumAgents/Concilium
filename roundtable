@@ -4,20 +4,37 @@
 #                    [--reviewer codex|claude|hermes] [--max-iters N] [--test-cmd "<测试命令>"]
 #   有 .venv+rich → 开 TUI 仪表盘；否则退回纯文本指挥程序。
 #   先探座位: roundtable --doctor
+#   查看入口版本: roundtable --version
 set -euo pipefail
 
 # --- 解析自身真实位置（支持被软链接到 PATH）---
-src="${BASH_SOURCE[0]}"
+original_src="${BASH_SOURCE[0]}"
+src="$original_src"
 while [ -h "$src" ]; do
   dir="$(cd -P "$(dirname "$src")" && pwd)"
   src="$(readlink "$src")"
   case "$src" in /*) ;; *) src="$dir/$src";; esac
 done
-PROJ="$(cd -P "$(dirname "$src")" && pwd)"
+src_dir="$(cd -P "$(dirname "$src")" && pwd)"
+src="${src_dir}/$(basename "$src")"
+PROJ="$src_dir"
 SKILL="$PROJ/skills/loop-engine"
 VENV_PY="$PROJ/.venv/bin/python"
 
-usage() { sed -n '2,6p' "$src" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,7p' "$src" | sed 's/^# \{0,1\}//'; }
+
+print_launcher_info() {
+  echo "Concilium roundtable"
+  echo "entrypoint: ${src}"
+  if [ -L "${original_src}" ]; then
+    echo "symlink_entrypoint: ${original_src}"
+    echo "symlink_target: $(readlink "${original_src}")"
+  fi
+  echo "repo_root: ${PROJ}"
+  git -C "${PROJ}" rev-parse --abbrev-ref HEAD 2>/dev/null | sed 's/^/branch: /' || true
+  git -C "${PROJ}" rev-parse --short HEAD 2>/dev/null | sed 's/^/commit: /' || true
+  git -C "${PROJ}" status --short 2>/dev/null | sed 's/^/status: /' || true
+}
 
 # 无参数 / 求助
 if [ "$#" -eq 0 ]; then usage; exit 0; fi
@@ -29,8 +46,15 @@ if [ "${1:-}" = "web" ] || [ "${1:-}" = "--web" ]; then
   exec python3 "$SKILL/web/server.py" ${@+"$@"}
 fi
 
-# --doctor：只探座位，不开会
+# --version：只看入口版本/路径，不开会
+if [ "${1:-}" = "--version" ]; then
+  print_launcher_info
+  exit 0
+fi
+
+# --doctor：入口诊断写 stderr；stdout 保留座位探测输出
 if [ "${1:-}" = "--doctor" ]; then
+  print_launcher_info >&2
   exec python3 "$SKILL/bin/roster-detect.py"
 fi
 
