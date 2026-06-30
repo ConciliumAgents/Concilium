@@ -34,6 +34,19 @@ class VerdictParserTests(unittest.TestCase):
         result = self.run_parser("Looks fine\n**VERDICT: PASS**\n")
         self.assertEqual(result.returncode, 0, result.stdout)
 
+    def test_accepts_markdown_heading_block_verdict_line(self):
+        result = self.run_parser("Findings above\n## VERDICT: BLOCK\n")
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertIn("BLOCK", result.stdout)
+
+    def test_accepts_bold_markdown_heading_pass_verdict_line(self):
+        result = self.run_parser("Findings above\n### **VERDICT: PASS**\n")
+        self.assertEqual(result.returncode, 0, result.stdout)
+
+    def test_rejects_verdict_inside_prose_sentence(self):
+        result = self.run_parser("The report title says ## VERDICT: BLOCK in prose.\n")
+        self.assertEqual(result.returncode, 1, result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

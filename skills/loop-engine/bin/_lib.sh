@@ -83,9 +83,13 @@ PY
 
 # ---- 从 agent 输出文件抽 VERDICT 行，落实退出码约定（0=PASS 2=BLOCK 1=ERR）----
 # 注：行首容忍空白；整行 Markdown 加粗也容忍，避免只读席位把最终裁决写成 **VERDICT: PASS**。
+LOOP_VERDICT_LINE_RE='^[[:space:]]*(#{1,6}[[:space:]]*)?(\*\*)?VERDICT:[[:space:]]*(PASS|BLOCK)(\*\*)?[[:space:]]*$'
+LOOP_VERDICT_PASS_RE='^[[:space:]]*(#{1,6}[[:space:]]*)?(\*\*)?VERDICT:[[:space:]]*PASS(\*\*)?[[:space:]]*$'
+LOOP_VERDICT_BLOCK_RE='^[[:space:]]*(#{1,6}[[:space:]]*)?(\*\*)?VERDICT:[[:space:]]*BLOCK(\*\*)?[[:space:]]*$'
+
 loop_verdict_exit() {
   local f="$1" line
-  line="$(grep -aiE '^[[:space:]]*(\*\*)?VERDICT:[[:space:]]*(PASS|BLOCK)(\*\*)?[[:space:]]*$' "$f" | tail -1 || true)"
+  line="$(grep -aiE "$LOOP_VERDICT_LINE_RE" "$f" | tail -1 || true)"
   if   printf '%s' "$line" | grep -qiE 'PASS';  then loop_log "裁决: PASS";  return 0
   elif printf '%s' "$line" | grep -qiE 'BLOCK'; then loop_warn "裁决: BLOCK"; return 2
   else loop_warn "未找到 VERDICT 行——按 ERR 处理，请人工读完整 minutes"; return 1
@@ -97,8 +101,8 @@ loop_verdict_exit() {
 loop_codex_verdict() {
   local f="$1"
   # 1) 若 codex 某版本听话给了显式 VERDICT 行，优先
-  if grep -aiqE '^[[:space:]]*(\*\*)?VERDICT:[[:space:]]*BLOCK(\*\*)?[[:space:]]*$' "$f"; then loop_warn "裁决: BLOCK (显式 VERDICT)"; return 2; fi
-  if grep -aiqE '^[[:space:]]*(\*\*)?VERDICT:[[:space:]]*PASS(\*\*)?[[:space:]]*$'  "$f"; then loop_log  "裁决: PASS (显式 VERDICT)"; return 0; fi
+  if grep -aiqE "$LOOP_VERDICT_BLOCK_RE" "$f"; then loop_warn "裁决: BLOCK (显式 VERDICT)"; return 2; fi
+  if grep -aiqE "$LOOP_VERDICT_PASS_RE"  "$f"; then loop_log  "裁决: PASS (显式 VERDICT)"; return 0; fi
   # 2) 回退解析 codex 原生高危标记 [P0]/[P1]（=Critical/High）→ BLOCK
   if grep -aqE '\[P[01]\]' "$f"; then loop_warn "裁决: BLOCK (codex 标出 P0/P1 高危)"; return 2; fi
   # 3) 无高危标记 → PASS
