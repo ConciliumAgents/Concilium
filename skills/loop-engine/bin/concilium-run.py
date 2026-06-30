@@ -28,6 +28,12 @@ def run_concilium(
     mode: str | None = None,
     confirmation: dict | None = None,
     seats: list[str] | None = None,
+    commander: str = "",
+    reviewer: str = "",
+    max_iters: int | None = None,
+    fast_agent: str = "",
+    review_executor: str = "",
+    review_reviewer: str = "",
 ) -> dict:
     selected_mode = "preview" if dry_run or print_route else mode or "live_run"
     params = {
@@ -41,6 +47,12 @@ def run_concilium(
         "signals": signals or {},
         "timeout": timeout,
         "seats": list(seats or []),
+        "commander": commander,
+        "reviewer": reviewer,
+        "max_iters": max_iters,
+        "fast_agent": fast_agent,
+        "review_executor": review_executor,
+        "review_reviewer": review_reviewer,
     }
     return concilium_runtime.run_concilium_adapter(params, confirmation=confirmation)
 
@@ -71,6 +83,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--confirmation-json", default="")
     parser.add_argument("--timeout", type=int, default=300)
     parser.add_argument("--seats", default="", help="Comma-separated native seats, for example claude,hermes,kimi.")
+    parser.add_argument("--commander", default="")
+    parser.add_argument("--reviewer", default="")
+    parser.add_argument("--max-iters", type=int, default=None)
+    parser.add_argument("--fast-agent", default="")
+    parser.add_argument("--review-executor", default="")
+    parser.add_argument("--review-reviewer", default="")
     args = parser.parse_args(argv)
 
     if args.live and args.dry_run:
@@ -94,6 +112,12 @@ def main(argv: list[str] | None = None) -> int:
             "signals": signals or {},
             "timeout": args.timeout,
             "seats": _split_seats(args.seats),
+            "commander": args.commander,
+            "reviewer": args.reviewer,
+            "max_iters": args.max_iters,
+            "fast_agent": args.fast_agent,
+            "review_executor": args.review_executor,
+            "review_reviewer": args.review_reviewer,
         }
         result = concilium_runtime.run_concilium_adapter(params, confirmation=confirmation)
     except (ValueError, json.JSONDecodeError) as e:

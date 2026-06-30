@@ -76,6 +76,35 @@ class ConciliumRunTests(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertEqual(adapter.call_args.args[0]["seats"], ["claude", "hermes", "kimi"])
 
+    def test_cli_legacy_roundtable_flags_reach_runtime_overlay(self):
+        result = {
+            "status": "preview",
+            "route": {"lane": "roundtable", "required_seats": ["claude", "hermes", "kimi"]},
+        }
+        with tempfile.TemporaryDirectory() as td, \
+                mock.patch.object(concilium_run.concilium_runtime, "run_concilium_adapter", return_value=result) as adapter, \
+                contextlib.redirect_stdout(io.StringIO()):
+            rc = concilium_run.main([
+                "--repo", td,
+                "--task", "Architecture decision with migration risk.",
+                "--print-route",
+                "--commander", "claude",
+                "--reviewer", "hermes",
+                "--max-iters", "2",
+                "--review-executor", "kimi",
+                "--review-reviewer", "hermes",
+                "--fast-agent", "kimi",
+            ])
+
+        self.assertEqual(rc, 0)
+        params = adapter.call_args.args[0]
+        self.assertEqual(params["commander"], "claude")
+        self.assertEqual(params["reviewer"], "hermes")
+        self.assertEqual(params["max_iters"], 2)
+        self.assertEqual(params["review_executor"], "kimi")
+        self.assertEqual(params["review_reviewer"], "hermes")
+        self.assertEqual(params["fast_agent"], "kimi")
+
     def test_confirmation_required_cli_exits_three(self):
         result = {"status": "confirmation_required", "guard": {"status": "confirmation_required"}}
         with tempfile.TemporaryDirectory() as td, \
