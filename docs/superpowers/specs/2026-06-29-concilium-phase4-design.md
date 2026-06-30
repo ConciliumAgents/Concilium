@@ -349,3 +349,9 @@ The implementation plan must choose:
 - whether config save endpoints are included in Phase 4 or deferred to Phase 5.
 
 These are implementation choices, not unresolved product requirements.
+
+## Implementation Status
+
+Implemented by `docs/superpowers/plans/2026-06-29-concilium-phase4-implementation.md`.
+
+Closeout evidence: `docs/loop-engine/phase4-closeout-2026-06-29.md`.
