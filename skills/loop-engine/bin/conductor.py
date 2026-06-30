@@ -208,6 +208,25 @@ def timed_run_seat(
     return rc, out
 
 
+def _record_review_verdict(state: dict, iteration: int, agent: str, mode: str, rc: int) -> None:
+    if mode != "review":
+        return
+    verdict = VERDICT_MAP.get(int(rc), "ERR")
+    row = {
+        "iter": iteration,
+        "seat": agent,
+        "mode": mode,
+        "rc": int(rc),
+        "verdict": verdict,
+    }
+    state.setdefault("seat_verdicts", []).append(row)
+    state["verdicts"] = [
+        item.get("verdict", "ERR")
+        for item in state.get("seat_verdicts", [])
+        if item.get("mode") == "review"
+    ]
+
+
 def _append_seat_timing(repo: str, iteration: int, agent: str, mode: str, rc: int, duration: float) -> None:
     try:
         state_path = session_dir(repo) / "roundtable.json"
@@ -221,6 +240,7 @@ def _append_seat_timing(repo: str, iteration: int, agent: str, mode: str, rc: in
             "rc": rc,
             "duration_seconds": round(max(0.0, duration), 3),
         })
+        _record_review_verdict(state, iteration, agent, mode, rc)
         state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
     except Exception:
         pass

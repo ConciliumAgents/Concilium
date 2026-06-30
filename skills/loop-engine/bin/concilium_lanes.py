@@ -97,6 +97,10 @@ def _filter_available_seats(requested: list[str], seated: list[str]) -> list[str
     return [seat for seat in requested if seat in available]
 
 
+def _verdict_for_rc(rc: int) -> str:
+    return conductor.VERDICT_MAP.get(int(rc), "ERR")
+
+
 def collect_capacity(repo: str | Path, config: dict) -> list[dict]:
     del repo
     result = process_runner.run_process_group(
@@ -212,6 +216,7 @@ def run_audit_lane(repo: str | Path, task: str, test_cmd: str, config: dict, tim
                 "backend_type": "external_cli",
                 "status": "invoked",
                 "rc": int(src),
+                "verdict": _verdict_for_rc(src),
                 "output_tail": capacity_status.redact(str(sout)[-4000:]),
             })
 
@@ -379,6 +384,7 @@ def run_plan_review_lane(repo: str | Path, task: str, test_cmd: str, config: dic
                 "backend_type": "external_cli",
                 "status": "invoked",
                 "rc": int(rc),
+                "verdict": _verdict_for_rc(rc),
                 "output_tail": capacity_status.redact(str(output)[-4000:]),
             }
             seat_results.append(result)

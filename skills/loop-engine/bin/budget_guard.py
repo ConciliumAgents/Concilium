@@ -96,17 +96,36 @@ def _confirmation_fingerprint(payload):
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
+def _signals(preview, request):
+    signals = {}
+    if isinstance(request.get("signals"), dict):
+        signals.update(request.get("signals") or {})
+    if isinstance(preview.get("signals"), dict):
+        signals.update(preview.get("signals") or {})
+    return signals
+
+
+def _is_read_only_task(preview, request):
+    del request
+    route = preview.get("route") or {}
+    lane = str(route.get("lane", ""))
+    return lane in {"audit", "plan_review"}
+
+
 def _files_may_be_modified(preview, request, mode=None):
     if "files_may_be_modified" in preview:
         return bool(preview.get("files_may_be_modified"))
     if "files_may_be_modified" in request:
         return bool(request.get("files_may_be_modified"))
+    if _is_read_only_task(preview, request):
+        return False
     return mode == "live_run" or preview.get("mode") == "live_run" or request.get("mode") == "live_run"
 
 
 def confirmation_payload(preview, mode=None):
     route = preview.get("route") or {}
     request = preview.get("request") or {}
+    merged_signals = _signals(preview, request)
     records, unresolved = _required_records(preview)
 
     seats = []
@@ -147,6 +166,9 @@ def confirmation_payload(preview, mode=None):
             request.get("expected_max_agent_calls", route.get("expected_max_agent_calls")),
         ),
         "files_may_be_modified": _files_may_be_modified(preview, request, mode=mode),
+        "read_only_task": _is_read_only_task(preview, request),
+        "allowed_write_paths": list(merged_signals.get("allowed_write_paths") or []),
+        "required_artifact_paths": list(merged_signals.get("required_artifact_paths") or []),
         "global_config_may_be_touched": False,
     }
     payload["confirmation_fingerprint"] = _confirmation_fingerprint(payload)
