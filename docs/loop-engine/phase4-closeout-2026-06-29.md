@@ -91,6 +91,8 @@ Start Phase 5 when the user wants the native menu bar shell and setup/config wri
 
 After the first dogfood audits, Concilium gained an additional guard against accidentally degrading a roundtable into same-source Codex review:
 
+Post-closeout entrypoint hardening: the `roundtable` launcher no longer bypasses Concilium runtime for normal `--task` calls. Use `roundtable legacy ...` only when intentionally testing the old conductor loop.
+
 - Audit Lane default seats are `claude`, `hermes`, and `kimi`; `codex` is explicit opt-in.
 - Plan Review Lane default seats are `claude`, `hermes`, and `kimi`; `codex` is explicit opt-in.
 - `concilium-run.py --seats claude,hermes,kimi` can override seats per run.
