@@ -335,6 +335,7 @@ def _default_lane_executor(preview: dict, effective: dict) -> dict:
             route["required_seats"][0],
             timeout,
             seat_models=effective.get("seat_models", {}),
+            timeout_config=effective,
         )
     if lane == "review":
         return concilium_lanes.run_review_lane(repo, task, test_cmd, effective, timeout)

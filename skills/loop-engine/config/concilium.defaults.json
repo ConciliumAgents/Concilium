@@ -36,6 +36,18 @@
     "block_below_percent": 5,
     "max_status_age_seconds": 300
   },
+  "timeouts": {
+    "seat_mode_seconds": {
+      "claude": {
+        "plan": 600,
+        "review": 600
+      },
+      "codex": {
+        "plan": 600,
+        "review": 600
+      }
+    }
+  },
   "privacy": {
     "redact_account_identifiers": true,
     "redact_credentials": true

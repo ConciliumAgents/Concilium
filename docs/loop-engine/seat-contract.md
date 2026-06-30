@@ -95,6 +95,18 @@ Rules:
 - Return `PASS` only when there are no `[CRITICAL]` or `[HIGH]` issues.
 - If the conductor brief says a seat failed or a subtask was dropped, judge whether task completeness was actually harmed. Do not mechanically block when another seat completed the work.
 
+## Timeout Budget
+
+Timeout is a task budget, not a model capability score.
+
+The default hard timeout is `LOOP_SEAT_TIMEOUT`. More specific overrides take precedence:
+
+- `LOOP_SEAT_TIMEOUT_<SEAT>_<MODE>`
+- `LOOP_SEAT_TIMEOUT_<SEAT>`
+- `LOOP_SEAT_TIMEOUT`
+
+For example, `LOOP_SEAT_TIMEOUT_CLAUDE_REVIEW=600` gives Claude review seats a longer window without marking Claude as degraded. Concilium defaults keep ordinary seats on the base timeout and give Claude/Codex `plan` and `review` seats a longer budget because they are slow but valuable for deep planning, review, and synthesis. Capacity and availability are judged by quota/auth/preflight status, not by latency alone.
+
 ## Exit Code Mapping
 
 - `0`: process succeeded; for `claude`, `kimi`, and `hermes` review this maps to PASS only when `loop_verdict_exit` finds PASS.

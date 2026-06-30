@@ -100,7 +100,8 @@ def refresh_kb(repo: str | Path, test_cmd: str, env: dict, timeout: int) -> None
 
 def run_seat(repo: str | Path, seat: str, mode: str, brief: str, env: dict, timeout: int) -> tuple[int, str]:
     script = BIN / f"seat-{seat}.sh"
-    return run_cmd([str(script), str(repo), mode, brief], BIN, env, timeout)
+    seat_timeout = conductor.resolve_seat_timeout(seat, mode, default=timeout, env=env)
+    return run_cmd([str(script), str(repo), mode, brief], BIN, env, seat_timeout)
 
 
 def review_verdict_from_returncode(rc: int) -> str:

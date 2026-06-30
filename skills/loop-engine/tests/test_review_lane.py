@@ -18,6 +18,25 @@ spec.loader.exec_module(review_lane)
 
 
 class ReviewLaneTests(unittest.TestCase):
+    def test_run_seat_uses_specific_timeout_override(self):
+        observed = {}
+
+        def fake_run_cmd(args, cwd, env, timeout):
+            observed["args"] = args
+            observed["timeout"] = timeout
+            return 0, "VERDICT: PASS\n"
+
+        env = review_lane.review_lane_env(300, "unit-review")
+        env["LOOP_SEAT_TIMEOUT_CLAUDE_REVIEW"] = "600"
+
+        with tempfile.TemporaryDirectory() as td, mock.patch.object(review_lane, "run_cmd", side_effect=fake_run_cmd):
+            rc, out = review_lane.run_seat(td, "claude", "review", "Review this.", env, 300)
+
+        self.assertEqual(rc, 0)
+        self.assertIn("VERDICT: PASS", out)
+        self.assertEqual(observed["timeout"], 600)
+        self.assertIn("seat-claude.sh", str(observed["args"][0]))
+
     def test_requires_distinct_executor_and_reviewer(self):
         with tempfile.TemporaryDirectory() as td:
             with self.assertRaises(ValueError):

@@ -69,6 +69,47 @@ def split_path_list(value: str | list[str] | tuple[str, ...] | None) -> list[str
     return [item.strip() for item in raw_items if item.strip()]
 
 
+def _env_token(value: str) -> str:
+    token = re.sub(r"[^A-Za-z0-9]+", "_", str(value or "")).strip("_").upper()
+    return token or "UNKNOWN"
+
+
+def seat_timeout_env_key(agent: str, mode: str = "") -> str:
+    parts = ["LOOP_SEAT_TIMEOUT", _env_token(agent)]
+    if mode:
+        parts.append(_env_token(mode))
+    return "_".join(parts)
+
+
+def _parse_timeout_seconds(value: str, source: str) -> int:
+    try:
+        timeout = int(str(value))
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{source} must be a positive integer") from exc
+    if timeout <= 0:
+        raise ValueError(f"{source} must be positive")
+    return timeout
+
+
+def resolve_seat_timeout(
+    agent: str,
+    mode: str,
+    default: int | None = None,
+    env: dict[str, str] | None = None,
+) -> int:
+    source_env = env if env is not None else os.environ
+    candidates = [
+        seat_timeout_env_key(agent, mode),
+        seat_timeout_env_key(agent),
+        "LOOP_SEAT_TIMEOUT",
+    ]
+    for key in candidates:
+        value = source_env.get(key)
+        if value:
+            return _parse_timeout_seconds(value, key)
+    return _parse_timeout_seconds(default if default is not None else 600, "default seat timeout")
+
+
 # ---------------- Reporter：过程事件接口 ----------------
 class Reporter:
     def start(self, repo, task, commander, reviewer, max_iters): ...
@@ -130,7 +171,7 @@ def run_seat(agent: str, mode: str, repo: str, brief: str = "", extra: list[str]
     # 每个座位调用都设超时 + 进程组强杀：一个 agent 卡死不得拖垮整个循环。
     # start_new_session 让座位脚本及其子孙（codex/hermes node 进程）同属一个进程组，
     # 超时时整组 SIGKILL，避免 codex 等孙进程变孤儿继续空跑。
-    timeout = int(os.environ.get("LOOP_SEAT_TIMEOUT", "600"))
+    timeout = resolve_seat_timeout(agent, mode, env=child_env)
     try:
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                              text=True, start_new_session=True, env=child_env)

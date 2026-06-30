@@ -68,6 +68,17 @@ def validate_config(config: dict) -> None:
     if block > warn:
         raise ValueError("capacity.block_below_percent must be less than or equal to warn_below_percent")
 
+    timeouts = config.get("timeouts", {})
+    seat_modes = timeouts.get("seat_mode_seconds", {}) if isinstance(timeouts, dict) else {}
+    if not isinstance(seat_modes, dict):
+        raise ValueError("timeouts.seat_mode_seconds must be an object")
+    for seat, modes in seat_modes.items():
+        if not isinstance(modes, dict):
+            raise ValueError(f"timeouts.seat_mode_seconds.{seat} must be an object")
+        for mode, seconds in modes.items():
+            if not isinstance(seconds, (int, float)) or seconds <= 0:
+                raise ValueError(f"timeout override for {seat}.{mode} must be positive")
+
 
 def _redact_value(value):
     if isinstance(value, dict):

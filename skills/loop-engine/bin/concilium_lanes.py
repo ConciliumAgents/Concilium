@@ -64,6 +64,20 @@ def _run_bin(args: list[str], env: dict, timeout: int) -> tuple[int, str]:
     return int(result["returncode"]), str(result["output"])
 
 
+def _seat_timeout_env(timeout: int, config: dict) -> dict[str, str]:
+    env = {"LOOP_SEAT_TIMEOUT": str(timeout)}
+    timeouts = config.get("timeouts", {}) if isinstance(config, dict) else {}
+    seat_modes = timeouts.get("seat_mode_seconds", {}) if isinstance(timeouts, dict) else {}
+    if not isinstance(seat_modes, dict):
+        return env
+    for seat, modes in seat_modes.items():
+        if not isinstance(modes, dict):
+            continue
+        for mode, seconds in modes.items():
+            env[conductor.seat_timeout_env_key(str(seat), str(mode))] = str(seconds)
+    return env
+
+
 def collect_capacity(repo: str | Path, config: dict) -> list[dict]:
     del repo
     result = process_runner.run_process_group(
@@ -85,14 +99,16 @@ def run_fast_lane(
     agent: str,
     timeout: int,
     seat_models: dict | None = None,
+    timeout_config: dict | None = None,
 ) -> dict:
     repo_path = Path(repo).expanduser().resolve()
     env = dict(os.environ)
     env["LOOP_SESSION"] = env.get("LOOP_SESSION") or f"fast-{_slug(task)}"
-    env["LOOP_SEAT_TIMEOUT"] = str(timeout)
     env["LOOP_ARCHIVE"] = "0"
+    env.update(_seat_timeout_env(timeout, timeout_config or {}))
 
-    scoped = {key: env[key] for key in ("LOOP_SESSION", "LOOP_SEAT_TIMEOUT", "LOOP_ARCHIVE")}
+    scoped = {key: env[key] for key in ("LOOP_SESSION", "LOOP_ARCHIVE")}
+    scoped.update(_seat_timeout_env(timeout, timeout_config or {}))
     with _scoped_env(scoped):
         rc, out = _run_bin([str(BIN / "roundtable-init.sh"), str(repo_path), task], env, timeout)
         if rc != 0:
@@ -107,7 +123,7 @@ def run_fast_lane(
             [str(script), str(repo_path), "exec", task],
             cwd=BIN,
             env=env,
-            timeout=timeout,
+            timeout=conductor.resolve_seat_timeout(agent, "exec", default=timeout, env=env),
         )
         verify_rc, verify_out = _run_shell(test_cmd, repo_path, timeout)
         agent_rc = int(proc["returncode"])
@@ -123,16 +139,17 @@ def run_fast_lane(
 
 def run_review_lane(repo: str | Path, task: str, test_cmd: str, config: dict, timeout: int) -> dict:
     review = config.get("lanes", {}).get("review", {})
-    result = review_lane_module.run_review_lane(
-        repo,
-        task,
-        test_cmd=test_cmd,
-        executor=review.get("default_review_executor", "kimi"),
-        reviewer=review.get("default_review_reviewer", "hermes"),
-        repair_limit=int(review.get("review_repair_limit", 1)),
-        timeout=timeout,
-        seat_models=config.get("seat_models", {}),
-    )
+    with _scoped_env(_seat_timeout_env(timeout, config)):
+        result = review_lane_module.run_review_lane(
+            repo,
+            task,
+            test_cmd=test_cmd,
+            executor=review.get("default_review_executor", "kimi"),
+            reviewer=review.get("default_review_reviewer", "hermes"),
+            repair_limit=int(review.get("review_repair_limit", 1)),
+            timeout=timeout,
+            seat_models=config.get("seat_models", {}),
+        )
     result = dict(result)
     result["status"] = "ran"
     result["lane"] = "review"
@@ -150,9 +167,10 @@ def run_audit_lane(repo: str | Path, task: str, test_cmd: str, config: dict, tim
         allowed_artifacts = list(audit.get("allowed_report_paths") or [])
     env = dict(os.environ)
     env["LOOP_SESSION"] = env.get("LOOP_SESSION") or f"audit-{_slug(task)}"
-    env["LOOP_SEAT_TIMEOUT"] = str(timeout)
     env["LOOP_ARCHIVE"] = "0"
-    scoped = {key: env[key] for key in ("LOOP_SESSION", "LOOP_SEAT_TIMEOUT", "LOOP_ARCHIVE")}
+    env.update(_seat_timeout_env(timeout, config))
+    scoped = {key: env[key] for key in ("LOOP_SESSION", "LOOP_ARCHIVE")}
+    scoped.update(_seat_timeout_env(timeout, config))
 
     with _scoped_env(scoped):
         rc, out = _run_bin([str(BIN / "roundtable-init.sh"), str(repo_path), task], env, timeout)
@@ -272,7 +290,7 @@ def _write_audit_report(
 
 
 def run_plan_review_lane(repo: str | Path, task: str, test_cmd: str, config: dict, timeout: int) -> dict:
-    del test_cmd, timeout
+    del test_cmd
     repo_path = Path(repo).expanduser().resolve()
     plan_review = config.get("lanes", {}).get("plan_review", {})
     seats = list(plan_review.get("seats") or config.get("lanes", {}).get("audit", {}).get("seats") or ["codex"])
@@ -316,27 +334,28 @@ def run_plan_review_lane(repo: str | Path, task: str, test_cmd: str, config: dic
     before_snapshot = concilium_artifacts.hash_delta_snapshot(repo_path, include_paths=[plan_rel])
     seat_results = []
     blockers = []
-    for seat in seats:
-        model_config = dict(config.get("seat_models", {}).get(seat, {}))
-        provider = str(model_config.get("provider", ""))
-        model = str(model_config.get("model", ""))
-        brief = (
-            f"Review execution plan {plan_path}. Do not modify files. "
-            "If blocking, provide severity, plan section or file line, blocker reason, and required change. "
-            "End with VERDICT: PASS or VERDICT: BLOCK."
-        )
-        rc, output = conductor.timed_run_seat(str(repo_path), 1, seat, "review", brief=brief, provider=provider, model=model)
-        result = {
-            "seat": seat,
-            "mode": "review",
-            "backend_type": "external_cli",
-            "status": "invoked",
-            "rc": int(rc),
-            "output_tail": capacity_status.redact(str(output)[-4000:]),
-        }
-        seat_results.append(result)
-        if int(rc) == 2:
-            blockers.append({"seat": seat, "severity": "HIGH", "summary": capacity_status.redact(str(output)[-500:])})
+    with _scoped_env(_seat_timeout_env(timeout, config)):
+        for seat in seats:
+            model_config = dict(config.get("seat_models", {}).get(seat, {}))
+            provider = str(model_config.get("provider", ""))
+            model = str(model_config.get("model", ""))
+            brief = (
+                f"Review execution plan {plan_path}. Do not modify files. "
+                "If blocking, provide severity, plan section or file line, blocker reason, and required change. "
+                "End with VERDICT: PASS or VERDICT: BLOCK."
+            )
+            rc, output = conductor.timed_run_seat(str(repo_path), 1, seat, "review", brief=brief, provider=provider, model=model)
+            result = {
+                "seat": seat,
+                "mode": "review",
+                "backend_type": "external_cli",
+                "status": "invoked",
+                "rc": int(rc),
+                "output_tail": capacity_status.redact(str(output)[-4000:]),
+            }
+            seat_results.append(result)
+            if int(rc) == 2:
+                blockers.append({"seat": seat, "severity": "HIGH", "summary": capacity_status.redact(str(output)[-500:])})
 
     gate = concilium_artifacts.evaluate_artifact_gate(
         repo_path,
@@ -404,9 +423,7 @@ def run_roundtable_lane(
     reporter=None,
 ) -> dict:
     roundtable = config.get("lanes", {}).get("roundtable", {})
-    old_timeout = os.environ.get("LOOP_SEAT_TIMEOUT")
-    os.environ["LOOP_SEAT_TIMEOUT"] = str(timeout)
-    try:
+    with _scoped_env(_seat_timeout_env(timeout, config)):
         rc = conductor.run(
             str(Path(repo).expanduser().resolve()),
             task,
@@ -418,9 +435,4 @@ def run_roundtable_lane(
             seats=roundtable.get("seats") or None,
             seat_models=config.get("seat_models", {}),
         )
-    finally:
-        if old_timeout is None:
-            os.environ.pop("LOOP_SEAT_TIMEOUT", None)
-        else:
-            os.environ["LOOP_SEAT_TIMEOUT"] = old_timeout
     return {"status": "ran", "lane": "roundtable", "returncode": rc}

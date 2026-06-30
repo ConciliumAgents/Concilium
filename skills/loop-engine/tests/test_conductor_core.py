@@ -8,6 +8,7 @@ import pathlib
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
@@ -98,6 +99,47 @@ class ConductorPatch:
 
 
 class ConductorCoreTests(unittest.TestCase):
+    def test_run_seat_uses_seat_mode_timeout_override(self):
+        observed_timeouts = []
+
+        class FakeProcess:
+            returncode = 0
+            pid = 12345
+
+            def communicate(self, timeout=None):
+                observed_timeouts.append(timeout)
+                return "VERDICT: PASS\n", None
+
+        with mock.patch.object(conductor.subprocess, "Popen", return_value=FakeProcess()), \
+                mock.patch.dict(os.environ, {
+                    "LOOP_SEAT_TIMEOUT": "300",
+                    "LOOP_SEAT_TIMEOUT_CLAUDE_REVIEW": "600",
+                }, clear=False):
+            rc, out = conductor.run_seat("claude", "review", str(ROOT))
+
+        self.assertEqual(rc, 0)
+        self.assertIn("VERDICT: PASS", out)
+        self.assertEqual(observed_timeouts, [600])
+
+    def test_run_seat_falls_back_to_global_timeout(self):
+        observed_timeouts = []
+
+        class FakeProcess:
+            returncode = 0
+            pid = 12345
+
+            def communicate(self, timeout=None):
+                observed_timeouts.append(timeout)
+                return "done\n", None
+
+        with mock.patch.object(conductor.subprocess, "Popen", return_value=FakeProcess()), \
+                mock.patch.dict(os.environ, {"LOOP_SEAT_TIMEOUT": "321"}, clear=False):
+            rc, out = conductor.run_seat("kimi", "exec", str(ROOT), brief="Do it.")
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(out, "done\n")
+        self.assertEqual(observed_timeouts, [321])
+
     def test_split_path_list_accepts_commas_and_colons(self):
         self.assertEqual(
             conductor.split_path_list("docs/a.md,docs/b.md:reports/c.md"),

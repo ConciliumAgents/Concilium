@@ -20,6 +20,23 @@ class ConciliumLanesTests(unittest.TestCase):
     def _successful_process(self, *args, **kwargs):
         return {"returncode": 0, "output": "", "timed_out": False, "duration_seconds": 0.0}
 
+    def test_seat_timeout_env_maps_configured_slow_review_seats(self):
+        config = {
+            "timeouts": {
+                "seat_mode_seconds": {
+                    "claude": {"plan": 600, "review": 600},
+                    "codex": {"review": 600},
+                }
+            }
+        }
+
+        env = concilium_lanes._seat_timeout_env(300, config)
+
+        self.assertEqual(env["LOOP_SEAT_TIMEOUT"], "300")
+        self.assertEqual(env["LOOP_SEAT_TIMEOUT_CLAUDE_PLAN"], "600")
+        self.assertEqual(env["LOOP_SEAT_TIMEOUT_CLAUDE_REVIEW"], "600")
+        self.assertEqual(env["LOOP_SEAT_TIMEOUT_CODEX_REVIEW"], "600")
+
     def test_roundtable_lane_passes_seat_models_to_conductor(self):
         config = {
             "seat_models": {

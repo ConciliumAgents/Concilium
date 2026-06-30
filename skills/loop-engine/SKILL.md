@@ -33,7 +33,7 @@ codex --version        # 验证席（注：当前 chatgpt.com 后端常 websocke
 
 **座位现状＝派活依据**以 `KB/roster.md`（合并了 `roundtable-memory/ROSTER-PROFILES.md` 实战画像）为准：claude 退 exec 任指挥+验证、飞毛腿 hermes/kimi 干 exec、codex 当前不可达。
 
-环境变量（可选）：`LOOP_MAX_ITERS`(5) `LOOP_SEAT_TIMEOUT`(600，headless 座位硬超时) `LOOP_TEST_CMD` `LOOP_REVIEW_PROVIDER`/`LOOP_REVIEW_MODEL`(hermes 异质复审用) `LOOP_USE_ROUNDTABLE_MEMORY`(默认关；开则注入 git 化中立记忆/教训)。
+环境变量（可选）：`LOOP_MAX_ITERS`(5) `LOOP_SEAT_TIMEOUT`(600，headless 座位默认硬超时) `LOOP_SEAT_TIMEOUT_<SEAT>` / `LOOP_SEAT_TIMEOUT_<SEAT>_<MODE>`（按座位/模式覆盖；如 `LOOP_SEAT_TIMEOUT_CLAUDE_REVIEW=600`） `LOOP_TEST_CMD` `LOOP_REVIEW_PROVIDER`/`LOOP_REVIEW_MODEL`(hermes 异质复审用) `LOOP_USE_ROUNDTABLE_MEMORY`(默认关；开则注入 git 化中立记忆/教训)。
 
 ## 流程（每一步都建 todo 跟踪）
 

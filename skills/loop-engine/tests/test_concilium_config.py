@@ -21,6 +21,40 @@ class ConciliumConfigTests(unittest.TestCase):
         path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
         return path
 
+    def test_default_config_gives_claude_and_codex_longer_review_budget(self):
+        with tempfile.TemporaryDirectory() as td:
+            config = concilium_config.load_config(td)
+
+        seat_modes = config["timeouts"]["seat_mode_seconds"]
+        self.assertEqual(seat_modes["claude"]["plan"], 600)
+        self.assertEqual(seat_modes["claude"]["review"], 600)
+        self.assertEqual(seat_modes["codex"]["plan"], 600)
+        self.assertEqual(seat_modes["codex"]["review"], 600)
+
+    def test_timeout_overrides_must_be_positive_numbers(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = pathlib.Path(td) / "bad.json"
+            self.write_json(path, {
+                "version": 1,
+                "product_name": "Concilium",
+                "lanes": {
+                    "fast": {"default_single_agent": "kimi", "verify_required": True},
+                    "review": {
+                        "default_review_executor": "kimi",
+                        "default_review_reviewer": "hermes",
+                        "review_repair_limit": 1,
+                    },
+                    "roundtable": {"commander": "claude", "reviewer": "", "seats": ["claude", "hermes", "kimi"]},
+                },
+                "routing": {"risk_posture": "balanced", "allow_auto_escalation": True, "allow_auto_downgrade": False},
+                "capacity": {"warn_below_percent": 20, "block_below_percent": 5, "max_status_age_seconds": 300},
+                "timeouts": {"seat_mode_seconds": {"claude": {"review": 0}}},
+                "privacy": {"redact_account_identifiers": True, "redact_credentials": True},
+            })
+
+            with self.assertRaisesRegex(ValueError, "timeout.*positive"):
+                concilium_config.load_config(path.parent, user_config=path, default_config=path)
+
     def test_project_config_overrides_user_and_defaults(self):
         with tempfile.TemporaryDirectory() as td:
             root = pathlib.Path(td)
