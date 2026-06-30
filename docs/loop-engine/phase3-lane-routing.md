@@ -81,6 +81,8 @@ Each seat event must identify its actual backend, not only its display seat name
 
 Current implementation status: the runtime now routes read-only audit tasks to Audit Lane, dispatches configured reviewer seats through the existing external `seat-*.sh` runner, exposes seat backend provenance, writes a combined audit report when `required_artifact_paths` is supplied, and enforces the report artifact gate. A Claude/Kimi/Hermes/Codex audit seat marked `external_cli` means the native CLI runner was invoked; a Codex-hosted internal review must be marked separately as `codex_subagent`.
 
+The public `roundtable --task ...` launcher now enters Concilium runtime routing by default. Direct conductor/TUI behavior is available only through `roundtable legacy ...` or `roundtable --legacy ...`. This keeps Audit Lane and Plan Review Lane semantics consistent across CLI, WebUI, and future menu-bar clients: read-only audit and plan-review tasks route to reviewer-only native seats instead of the old commander/executor/reviewer loop.
+
 ### Legacy Roundtable Read-Only Audit Guard
 
 Direct legacy `roundtable` / `conductor.py` invocations now apply the same first-principles boundary when the task is explicitly read-only audit or review work:
