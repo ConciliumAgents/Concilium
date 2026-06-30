@@ -36,6 +36,17 @@ print_launcher_info() {
   git -C "${PROJ}" status --short 2>/dev/null | sed 's/^/status: /' || true
 }
 
+run_legacy() {
+  LEGACY_VENV_PY="${CONCILIUM_LEGACY_VENV_PY:-$VENV_PY}"
+  if [ -x "$LEGACY_VENV_PY" ] && "$LEGACY_VENV_PY" -c 'import rich' >/dev/null 2>&1; then
+    exec "$LEGACY_VENV_PY" "$SKILL/tui/tui.py" ${ARGS[@]+"${ARGS[@]}"}
+  else
+    LEGACY_PY="${CONCILIUM_LEGACY_PYTHON:-python3}"
+    echo "[roundtable] 未找到 .venv+rich，退回纯文本 legacy conductor" >&2
+    exec "$LEGACY_PY" "$SKILL/bin/conductor.py" ${ARGS[@]+"${ARGS[@]}"}
+  fi
+}
+
 # 无参数 / 求助
 if [ "$#" -eq 0 ]; then usage; exit 0; fi
 case "${1:-}" in -h|--help) usage; exit 0;; esac
@@ -67,10 +78,13 @@ ARGS=()
 $inject_repo && ARGS+=(--repo "$PWD")
 [ "$#" -gt 0 ] && ARGS+=("$@")
 
-# 选引擎：venv+rich 在 → TUI；否则纯文本
-if [ -x "$VENV_PY" ] && "$VENV_PY" -c 'import rich' >/dev/null 2>&1; then
-  exec "$VENV_PY" "$SKILL/tui/tui.py" ${ARGS[@]+"${ARGS[@]}"}
-else
-  echo "[roundtable] 未找到 .venv+rich，退回纯文本模式" >&2
-  exec python3 "$SKILL/bin/conductor.py" ${ARGS[@]+"${ARGS[@]}"}
+if [ "${1:-}" = "legacy" ] || [ "${1:-}" = "--legacy" ]; then
+  shift
+  ARGS=()
+  $inject_repo && ARGS+=(--repo "$PWD")
+  [ "$#" -gt 0 ] && ARGS+=("$@")
+  run_legacy
 fi
+
+PY="${CONCILIUM_LAUNCHER_PYTHON:-python3}"
+exec "$PY" "$SKILL/bin/concilium-run.py" --live ${ARGS[@]+"${ARGS[@]}"}
