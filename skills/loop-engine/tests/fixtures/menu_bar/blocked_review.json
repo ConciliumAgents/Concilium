@@ -1,0 +1,39 @@
+{
+  "status": {"service": "ok", "repo": "/tmp/repo"},
+  "effective_config": {
+    "routing": {"risk_posture": "balanced", "allow_auto_escalation": true, "allow_auto_downgrade": false},
+    "lanes": {
+      "fast": {"default_single_agent": "kimi"},
+      "review": {"default_review_executor": "kimi", "default_review_reviewer": "hermes"},
+      "roundtable": {"commander": "claude", "reviewer": "", "seats": ["claude", "hermes", "kimi"]}
+    }
+  },
+  "preflight": {
+    "route": {
+      "lane": "review",
+      "reason": "bounded medium-risk task benefits from independent review",
+      "required_seats": ["kimi", "hermes"]
+    },
+    "preflight": {"status": "blocked", "blocking_seats": ["hermes"], "warnings": []},
+    "capacity": [
+      {
+        "seat": "kimi",
+        "provider": "moonshot",
+        "model": "kimi",
+        "status": "ok",
+        "checked_at": "2026-06-29T00:00:00Z",
+        "reset_at": ""
+      },
+      {
+        "seat": "hermes",
+        "provider": "deepseek",
+        "model": "deepseek-chat",
+        "status": "hard_exhausted",
+        "checked_at": "2026-06-29T00:00:00Z",
+        "reset_at": ""
+      }
+    ],
+    "guard": {"status": "blocked", "reason": "seat unresolved or blocked"}
+  },
+  "events": []
+}

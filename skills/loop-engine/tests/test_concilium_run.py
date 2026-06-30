@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import contextlib
 import importlib.util
+import io
 import pathlib
 import tempfile
 import unittest
@@ -16,9 +18,13 @@ spec.loader.exec_module(concilium_run)
 
 
 class ConciliumRunTests(unittest.TestCase):
-    def test_print_route_does_not_run_agents(self):
+    def test_print_route_dry_preview_routes_through_adapter(self):
+        preview = {
+            "status": "preview",
+            "route": {"lane": "fast", "required_seats": ["kimi"]},
+        }
         with tempfile.TemporaryDirectory() as td, \
-                mock.patch.object(concilium_run, "run_fast_lane") as fast:
+                mock.patch.object(concilium_run.concilium_runtime, "run_concilium_adapter", return_value=preview) as adapter:
             result = concilium_run.run_concilium(
                 repo=td,
                 task="Fix one typo in docs/example.md.",
@@ -30,26 +36,54 @@ class ConciliumRunTests(unittest.TestCase):
 
         self.assertEqual(result["route"]["lane"], "fast")
         self.assertEqual(result["status"], "preview")
-        fast.assert_not_called()
+        adapter.assert_called_once()
+        params = adapter.call_args.args[0]
+        self.assertEqual(params["mode"], "preview")
+        self.assertTrue(params["dry_run"])
+        self.assertTrue(params["print_route"])
 
-    def test_blocked_preflight_stops_before_agent_call(self):
+    def test_confirmation_required_cli_exits_three(self):
+        result = {"status": "confirmation_required", "guard": {"status": "confirmation_required"}}
         with tempfile.TemporaryDirectory() as td, \
-                mock.patch.object(concilium_run, "collect_capacity", return_value=[
-                    {"seat": "kimi", "status": "ok", "blocking": False, "reason": ""},
-                    {"seat": "hermes", "status": "hard_exhausted", "blocking": True, "reason": "0 percent remaining"},
-                ]), \
-                mock.patch.object(concilium_run, "run_review_lane") as review:
-            result = concilium_run.run_concilium(
-                repo=td,
-                task="Change config routing behavior.",
-                test_cmd="true",
-                dry_run=False,
-                print_route=False,
-                signals={"risk": "medium", "file_count": 2, "security_sensitive": False, "ambiguous": False},
+                mock.patch.object(concilium_run.concilium_runtime, "run_concilium_adapter", return_value=result), \
+                contextlib.redirect_stdout(io.StringIO()):
+            rc = concilium_run.main(
+                [
+                    "--repo", td,
+                    "--task", "Change config routing behavior.",
+                    "--test-cmd", "true",
+                    "--live",
+                    "--signals-json", '{"risk":"medium","file_count":2,"security_sensitive":false,"ambiguous":false}',
+                ]
             )
 
-        self.assertEqual(result["status"], "blocked")
-        review.assert_not_called()
+        self.assertEqual(rc, 3)
+
+    def test_print_route_live_forces_preview_mode(self):
+        preview = {
+            "status": "preview",
+            "route": {"lane": "fast", "required_seats": ["kimi"]},
+        }
+        with tempfile.TemporaryDirectory() as td, \
+                mock.patch.object(concilium_run.concilium_runtime, "run_concilium_adapter", return_value=preview) as adapter, \
+                contextlib.redirect_stdout(io.StringIO()):
+            rc = concilium_run.main(["--repo", td, "--task", "Fix one typo.", "--live", "--print-route"])
+
+        self.assertEqual(rc, 0)
+        adapter.assert_called_once()
+        params = adapter.call_args.args[0]
+        self.assertEqual(params["mode"], "preview")
+        self.assertTrue(params["live"])
+        self.assertTrue(params["print_route"])
+
+    def test_blocked_cli_exits_three(self):
+        result = {"status": "blocked", "guard": {"status": "blocked"}}
+        with tempfile.TemporaryDirectory() as td, \
+                mock.patch.object(concilium_run.concilium_runtime, "run_concilium_adapter", return_value=result), \
+                contextlib.redirect_stdout(io.StringIO()):
+            rc = concilium_run.main(["--repo", td, "--task", "Change config routing behavior."])
+
+        self.assertEqual(rc, 3)
 
 
 if __name__ == "__main__":

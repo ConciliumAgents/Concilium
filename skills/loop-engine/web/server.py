@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
 """server.py — 圆桌 WebUI 后端（纯标准库，零依赖）。
 
-复用 conductor 的 Reporter 事件层：WebReporter 把过程事件推进队列，
-SSE 端点把队列实时流给浏览器。仅 127.0.0.1，不对外。
+HTTP/token/SSE 外壳。路由、预检、预算闸门、stub/live 执行都委托给
+Concilium runtime adapter。仅 127.0.0.1，不对外。
 
 端点：
   GET  /                 → 前端页面 index.html
+  GET  /api/status       → Concilium 服务状态
   GET  /api/doctor       → 座位探测结果（roster-detect --json）
+  GET  /api/config/effective?repo= → 脱敏后的有效配置
   POST /api/preflight    → 预检 Concilium lane/capacity（JSON body）
   POST /api/run          → 启动一次圆桌（JSON body），返回 {run_id}
   GET  /api/events?run=  → SSE 实时事件流
 """
 from __future__ import annotations
-import importlib.util, json, os, queue, secrets, subprocess, sys, threading, webbrowser
+import datetime, json, os, queue, re, secrets, subprocess, sys, threading, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
@@ -22,18 +24,10 @@ BIN = HERE.parent / "bin"
 sys.path.insert(0, str(BIN))
 import conductor  # noqa: E402
 import capacity_status  # noqa: E402
-
-
-def _load_bin_module(name: str, filename: str):
-    module_path = BIN / filename
-    spec = importlib.util.spec_from_file_location(name, module_path)
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-    return module
-
-
-concilium_run = _load_bin_module("concilium_run", "concilium-run.py")
+import concilium_config  # noqa: E402
+import concilium_events  # noqa: E402
+import concilium_runtime  # noqa: E402
+import budget_guard  # noqa: E402
 
 RUNS: dict[str, dict] = {}   # run_id -> {"q": Queue}
 _seq = {"n": 0}
@@ -42,51 +36,102 @@ _lock = threading.Lock()
 # 启动时生成的 CSRF token：服务 index.html 时注入页面（meta），前端 POST /api/run 必带
 # X-Loop-Token。SSE（EventSource）不能带自定义头，故只校验 POST，不校验 GET /api/events。
 TOKEN = secrets.token_urlsafe(32)
+SENSITIVE_RESPONSE_KEY_RE = re.compile(
+    r"(authorization|auth|headers|api[_-]?key|token|secret|password|credential|private|access[_-]?key)",
+    re.I,
+)
+SECRET_RESPONSE_VALUE_RE = re.compile(
+    r"\bBearer\s+[^\s\"'<>]+|\bsk-[A-Za-z0-9_-]+\b|\b[A-Za-z0-9_-]{3,}\.[A-Za-z0-9_-]{3,}\.[A-Za-z0-9_-]{3,}\b"
+)
 
 
-class WebReporter(conductor.Reporter):
-    """把指挥过程事件推进队列，供 SSE 流给浏览器。"""
-    def __init__(self, q: "queue.Queue"):
-        self.q = q
-    def _emit(self, **e): self.q.put(e)
-    def start(self, repo, task, commander, reviewer, max_iters):
-        self._emit(type="start", repo=repo, task=task, commander=commander, reviewer=reviewer, max_iters=max_iters)
-    def round(self, it): self._emit(type="round", it=it)
-    def plan(self, plan): self._emit(type="plan", plan=plan)
-    def seat(self, agent, mode, subtask="", rc=None, phase="start"):
-        self._emit(type="seat", agent=agent, mode=mode, subtask=subtask, rc=rc, phase=phase)
-    def verdict(self, reviewer, v): self._emit(type="verdict", reviewer=reviewer, verdict=v)
-    def finish(self, status, it): self._emit(type="finish", status=status, it=it)
-    def transcript(self, agent, mode, text):
-        t = (text or "").strip()
-        if t:
-            self._emit(type="transcript", agent=agent, mode=mode, text=t[:8000])
-    def log(self, msg):
-        import re
-        for line in str(msg).splitlines():
-            line = re.sub(r"\033\[[0-9;]*m", "", line).strip()
-            if line and ("loop-engine]" in line or "conductor]" in line):
-                self._emit(type="log", msg=line.replace("[loop-engine] ", "· ").replace("[conductor] ", "» "))
+def _adapter_params(params: dict, *, preview: bool = False) -> dict:
+    run_params = dict(params)
+    if preview:
+        run_params["mode"] = "preview"
+    elif not run_params.get("mode"):
+        run_params["mode"] = "stub_run" if run_params.get("dry_run") else "live_run"
+    if ("timeout" not in run_params or run_params.get("timeout") is None) and run_params.get("seat_timeout") is not None:
+        run_params["timeout"] = run_params["seat_timeout"]
+    return run_params
+
+
+def _result_rc(result: dict) -> int:
+    if "returncode" in result:
+        return int(result["returncode"])
+    if "rc" in result:
+        return int(result["rc"])
+    status = str(result.get("status") or "").strip()
+    if status in {"blocked", "confirmation_required"}:
+        return 3
+    if status == "error":
+        return 1
+    if status in {"", "allowed", "preview", "stubbed"}:
+        return 0
+    if status:
+        return 1
+    return 0
+
+
+def _finish_status(rc: int) -> str:
+    if rc == 0:
+        return "PASS"
+    if rc in (2, 3):
+        return "BLOCK"
+    return "ERR"
+
+
+class WebRuntimeEventSink(concilium_events.QueueEventSink):
+    def __init__(self, q: "queue.Queue", params: dict) -> None:
+        super().__init__(q)
+        self.params = params
+
+    def emit(self, event_type: str, **fields) -> None:
+        fields = self._translate(event_type, fields)
+        translated_type = fields.pop("type")
+        super().emit(translated_type, **fields)
+
+    def _translate(self, event_type: str, fields: dict) -> dict:
+        event = dict(fields)
+        event["type"] = event_type
+        if event_type == "start":
+            event.setdefault("repo", self.params.get("repo", ""))
+            event.setdefault("task", self.params.get("task", ""))
+            return event
+        if event_type == "seat":
+            if "agent" not in event and "seat" in event:
+                event["agent"] = event["seat"]
+            if event.get("status") == "stubbed":
+                event.setdefault("phase", "done")
+                event.setdefault("rc", 0)
+                event.setdefault("mode", "stub")
+            return event
+        if event_type == "finish":
+            rc = int(event.get("rc", 0))
+            event.setdefault("status", _finish_status(rc))
+            event["rc"] = rc
+            return event
+        if event_type == "verdict":
+            event.setdefault("reviewer", "")
+            return event
+        return event
 
 
 def _run_thread(params: dict, q: "queue.Queue"):
-    rep = WebReporter(q)
+    sink = WebRuntimeEventSink(q, params)
     try:
-        os.environ["LOOP_DRY_RUN"] = "1" if params.get("dry_run") else ""
-        if params.get("codex_effort"):
-            os.environ["LOOP_CODEX_EFFORT"] = str(params["codex_effort"])
-        os.environ["LOOP_SEAT_TIMEOUT"] = str(params.get("seat_timeout", 600))
-        rc = conductor.run(
-            params["repo"], params["task"],
-            params.get("commander", "claude"), params.get("reviewer", "codex"),
-            int(params.get("max_iters", 5)), params.get("test_cmd", ""), rep,
-            seats=params.get("seats") or None,
-            seat_models=params.get("seat_models") or None,
+        confirmation = params.get("confirmation") if isinstance(params.get("confirmation"), dict) else None
+        result = concilium_runtime.run_concilium_adapter(
+            _adapter_params(params),
+            confirmation=confirmation,
+            event_sink=sink,
         )
-        q.put({"type": "done", "rc": rc})
+        if not sink.done_emitted:
+            concilium_events.emit_done(sink, _result_rc(result))
     except Exception as e:
-        q.put({"type": "error", "msg": f"{type(e).__name__}: {e}"})
-        q.put({"type": "done", "rc": -1})
+        sink.emit("error", msg=capacity_status.redact(f"{type(e).__name__}: {e}"))
+        if not sink.done_emitted:
+            concilium_events.emit_done(sink, -1)
 
 
 def project_info(repo: str) -> dict:
@@ -110,34 +155,105 @@ def project_info(repo: str) -> dict:
     return out
 
 
-def _redact_response(value):
+def _redact_response(value, sensitive: bool = False):
     if isinstance(value, dict):
-        return {key: _redact_response(item) for key, item in value.items()}
+        redacted = {}
+        for key, item in value.items():
+            key_sensitive = sensitive or bool(SENSITIVE_RESPONSE_KEY_RE.search(str(key)))
+            if key_sensitive and isinstance(item, str):
+                redacted[key] = capacity_status.REDACTED
+            else:
+                redacted[key] = _redact_response(item, key_sensitive)
+        return redacted
     if isinstance(value, list):
-        return [_redact_response(item) for item in value]
+        return [_redact_response(item, sensitive) for item in value]
     if isinstance(value, str):
-        return capacity_status.redact(value)
+        if sensitive:
+            return capacity_status.REDACTED
+        return SECRET_RESPONSE_VALUE_RE.sub(capacity_status.REDACTED, capacity_status.redact(value))
     return value
 
 
 def build_preflight(params: dict) -> dict:
-    return concilium_run.run_concilium(
-        params["repo"],
-        params["task"],
-        test_cmd=params.get("test_cmd", ""),
-        dry_run=True,
-        print_route=True,
-    )
+    return concilium_runtime.run_concilium_adapter(_adapter_params(params, preview=True))
+
+
+def _intended_run_guard(params: dict, preview_result: dict) -> tuple[str, str, dict]:
+    request = concilium_runtime.normalize_request(_adapter_params(params))
+    request_fingerprint = concilium_runtime.request_fingerprint(request)
+    guard_preview = dict(preview_result)
+    guard_preview["mode"] = request["mode"]
+    guard_preview["request"] = request
+    guard_preview["request_fingerprint"] = request_fingerprint
+    guard = budget_guard.evaluate_budget_guard(guard_preview, mode=request["mode"])
+    return request["mode"], request_fingerprint, guard
 
 
 def preflight_response(params: dict) -> dict:
     result = build_preflight(params)
-    return _redact_response({
+    run_mode, run_request_fingerprint, run_guard = _intended_run_guard(params, result)
+    response = {
         "route": result.get("route", {}),
         "preflight": result.get("preflight", {}),
         "capacity": result.get("capacity", []),
         "signals": result.get("signals", {}),
-    })
+        "guard": result.get("guard", {}),
+        "run_guard": run_guard,
+        "run_mode": run_mode,
+        "run_request_fingerprint": run_request_fingerprint,
+    }
+    for key in ("request_fingerprint", "expected_max_agent_calls"):
+        if key in result:
+            response[key] = result[key]
+    return _redact_response(response)
+
+
+def status_response() -> dict:
+    return {
+        "product": "Concilium",
+        "service": "ok",
+        "bind": "127.0.0.1",
+        "token_required": True,
+        "endpoints": [
+            "/api/status",
+            "/api/doctor",
+            "/api/project",
+            "/api/config/effective?repo=...",
+            "/api/preflight",
+            "/api/run",
+            "/api/events",
+        ],
+    }
+
+
+def effective_config_response(repo: str) -> dict:
+    repo_path = Path(repo).expanduser().resolve()
+    config = concilium_config.load_config(repo_path)
+    return {
+        "repo": str(repo_path),
+        "config": _redact_response(concilium_config.redact_for_render(config)),
+    }
+
+
+def write_token_file(path: Path, base_url: str, token: str) -> None:
+    path = Path(path).expanduser()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    created_at = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    payload = {"base_url": base_url, "token": token, "created_at": created_at}
+    tmp = path.with_name(f".{path.name}.tmp-{os.getpid()}-{threading.get_ident()}")
+    fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+            f.write("\n")
+        os.replace(tmp, path)
+        os.chmod(path, 0o600)
+    except Exception:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        raise
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -160,9 +276,21 @@ class Handler(BaseHTTPRequestHandler):
             p = subprocess.run([sys.executable, str(BIN / "roster-detect.py"), "--json"],
                                capture_output=True, text=True, timeout=60)
             return self._send(200, p.stdout.encode("utf-8"))
+        if u.path == "/api/status":
+            return self._send(200, json.dumps(status_response(), ensure_ascii=False).encode("utf-8"))
         if u.path == "/api/project":
             repo = parse_qs(u.query).get("repo", [""])[0]
             return self._send(200, json.dumps(project_info(repo), ensure_ascii=False).encode("utf-8"))
+        if u.path == "/api/config/effective":
+            repo = parse_qs(u.query).get("repo", [""])[0]
+            if not repo:
+                return self._send(400, b'{"error":"repo required"}')
+            try:
+                body = effective_config_response(repo)
+                return self._send(200, json.dumps(body, ensure_ascii=False).encode("utf-8"))
+            except Exception as e:
+                body = {"error": f"{type(e).__name__}: {capacity_status.redact(str(e))}"}
+                return self._send(500, json.dumps(body, ensure_ascii=False).encode("utf-8"))
         if u.path == "/api/events":
             run_id = (parse_qs(u.query).get("run", [""])[0])
             run = RUNS.get(run_id)
@@ -226,9 +354,12 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--no-open", action="store_true")
+    ap.add_argument("--token-file", default="")
     a = ap.parse_args()
     srv = ThreadingHTTPServer(("127.0.0.1", a.port), Handler)
     url = f"http://127.0.0.1:{a.port}/"
+    if a.token_file:
+        write_token_file(Path(a.token_file).expanduser(), url, TOKEN)
     print(f"圆桌 WebUI: {url}  (Ctrl+C 退出)", flush=True)
     if not a.no_open:
         try: webbrowser.open(url)

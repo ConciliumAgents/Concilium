@@ -23,11 +23,19 @@ class WebPreflightTests(unittest.TestCase):
                     "route": {"lane": "review", "required_seats": ["kimi", "hermes"]},
                     "preflight": {"status": "warn", "warnings": ["kimi unknown capacity"], "blocking_seats": []},
                     "capacity": [{"seat": "kimi", "status": "unknown", "reason": "no token sk-secret"}],
+                    "signals": {"risk": "medium"},
+                    "guard": {"status": "allowed", "reason": "safe with sk-secret"},
+                    "request_fingerprint": "abc123",
+                    "expected_max_agent_calls": 2,
                 }):
             response = web_server.preflight_response({"repo": td, "task": "Change config", "test_cmd": "true"})
 
         text = json.dumps(response, ensure_ascii=False)
         self.assertIn('"lane": "review"', text)
+        self.assertEqual(response["signals"], {"risk": "medium"})
+        self.assertEqual(response["guard"]["status"], "allowed")
+        self.assertEqual(response["request_fingerprint"], "abc123")
+        self.assertEqual(response["expected_max_agent_calls"], 2)
         self.assertNotIn("sk-secret", text)
 
 
