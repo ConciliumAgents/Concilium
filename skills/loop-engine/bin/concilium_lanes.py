@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import contextlib
+import datetime
 import hashlib
 import json
 import os
@@ -52,6 +53,11 @@ def _slug(text: str, n: int = 24) -> str:
     return value[:n] or "task"
 
 
+def _fresh_session_id(lane: str, task: str) -> str:
+    stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+    return f"{lane}-{stamp}-{_slug(task)}"
+
+
 def _run_shell(cmd: str, cwd: Path, timeout: int) -> tuple[int, str]:
     if not cmd:
         return 0, ""
@@ -75,6 +81,14 @@ def _seat_timeout_env(timeout: int, config: dict) -> dict[str, str]:
             continue
         for mode, seconds in modes.items():
             env[conductor.seat_timeout_env_key(str(seat), str(mode))] = str(seconds)
+    return env
+
+
+def _lane_env(lane: str, task: str, timeout: int, config: dict) -> dict[str, str]:
+    env = dict(os.environ)
+    env["LOOP_SESSION"] = _fresh_session_id(lane, task)
+    env["LOOP_ARCHIVE"] = "0"
+    env.update(_seat_timeout_env(timeout, config))
     return env
 
 
@@ -107,10 +121,7 @@ def run_fast_lane(
     timeout_config: dict | None = None,
 ) -> dict:
     repo_path = Path(repo).expanduser().resolve()
-    env = dict(os.environ)
-    env["LOOP_SESSION"] = env.get("LOOP_SESSION") or f"fast-{_slug(task)}"
-    env["LOOP_ARCHIVE"] = "0"
-    env.update(_seat_timeout_env(timeout, timeout_config or {}))
+    env = _lane_env("fast", task, timeout, timeout_config or {})
 
     scoped = {key: env[key] for key in ("LOOP_SESSION", "LOOP_ARCHIVE")}
     scoped.update(_seat_timeout_env(timeout, timeout_config or {}))
@@ -171,10 +182,7 @@ def run_audit_lane(repo: str | Path, task: str, test_cmd: str, config: dict, tim
         allowed_artifacts = list(audit.get("allowed_write_paths") or [])
     else:
         allowed_artifacts = list(audit.get("allowed_report_paths") or [])
-    env = dict(os.environ)
-    env["LOOP_SESSION"] = env.get("LOOP_SESSION") or f"audit-{_slug(task)}"
-    env["LOOP_ARCHIVE"] = "0"
-    env.update(_seat_timeout_env(timeout, config))
+    env = _lane_env("audit", task, timeout, config)
     scoped = {key: env[key] for key in ("LOOP_SESSION", "LOOP_ARCHIVE")}
     scoped.update(_seat_timeout_env(timeout, config))
 
@@ -336,10 +344,7 @@ def run_plan_review_lane(repo: str | Path, task: str, test_cmd: str, config: dic
         }
 
     plan_rel = plan_file.relative_to(repo_path).as_posix()
-    env = dict(os.environ)
-    env["LOOP_SESSION"] = env.get("LOOP_SESSION") or f"plan-review-{_slug(task)}"
-    env["LOOP_ARCHIVE"] = "0"
-    env.update(_seat_timeout_env(timeout, config))
+    env = _lane_env("plan-review", task, timeout, config)
     scoped = {key: env[key] for key in ("LOOP_SESSION", "LOOP_ARCHIVE")}
     scoped.update(_seat_timeout_env(timeout, config))
     seat_results = []

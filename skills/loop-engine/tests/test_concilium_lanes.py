@@ -79,7 +79,7 @@ class ConciliumLanesTests(unittest.TestCase):
             self.assertNotIn("LOOP_ARCHIVE", os.environ)
 
         self.assertEqual(result["status"], "ran")
-        self.assertEqual(captured_env["LOOP_SESSION"], "fast-Design-the-adapter")
+        self.assertTrue(captured_env["LOOP_SESSION"].startswith("fast-"))
         self.assertEqual(captured_env["LOOP_SEAT_TIMEOUT"], "12")
         self.assertEqual(captured_env["LOOP_ARCHIVE"], "0")
 
@@ -100,6 +100,42 @@ class ConciliumLanesTests(unittest.TestCase):
         set_participants.assert_called_once_with(str(pathlib.Path(td).resolve()), ["claude", "kimi"])
         self.assertEqual([call.args[2:4] for call in timed_run.call_args_list], [("claude", "review"), ("kimi", "review")])
         self.assertEqual([row["seat"] for row in result["seat_results"]], ["claude", "kimi"])
+
+    def test_audit_lane_ignores_inherited_loop_session_by_default(self):
+        observed = {}
+
+        def capture_roster_env(*args, **kwargs):
+            observed["loop_session"] = os.environ.get("LOOP_SESSION")
+            observed["loop_seat_timeout"] = os.environ.get("LOOP_SEAT_TIMEOUT")
+            return ["claude", "hermes", "kimi"]
+
+        config = {
+            "lanes": {"audit": {"seats": ["claude", "hermes", "kimi"]}},
+            "seat_models": {},
+        }
+        with tempfile.TemporaryDirectory() as td, \
+                mock.patch.dict(os.environ, {"LOOP_SESSION": "stale-session"}, clear=False), \
+                mock.patch.object(concilium_lanes.process_runner, "run_process_group", side_effect=self._successful_process), \
+                mock.patch.object(concilium_lanes.conductor, "write_roster", side_effect=capture_roster_env), \
+                mock.patch.object(concilium_lanes.conductor, "set_participants"), \
+                mock.patch.object(
+                    concilium_lanes.conductor,
+                    "timed_run_seat",
+                    side_effect=[(0, "VERDICT: PASS"), (0, "VERDICT: PASS"), (0, "VERDICT: PASS")],
+                ):
+            result = concilium_lanes.run_audit_lane(
+                td,
+                "Read-only audit the architecture.",
+                "",
+                config,
+                timeout=12,
+            )
+            self.assertEqual(os.environ.get("LOOP_SESSION"), "stale-session")
+
+        self.assertEqual(result["status"], "ran")
+        self.assertNotEqual(observed["loop_session"], "stale-session")
+        self.assertTrue(observed["loop_session"].startswith("audit-"))
+        self.assertEqual(observed["loop_seat_timeout"], "12")
 
     def test_plan_review_lane_initializes_session_and_sets_actual_participants(self):
         with tempfile.TemporaryDirectory() as td:
@@ -128,6 +164,40 @@ class ConciliumLanesTests(unittest.TestCase):
         set_participants.assert_called_once_with(str(repo.resolve()), ["claude", "kimi"])
         self.assertEqual(result["status"], "passed")
         self.assertEqual([call.args[2:4] for call in timed_run.call_args_list], [("claude", "review"), ("kimi", "review")])
+
+    def test_plan_review_lane_ignores_inherited_loop_session_by_default(self):
+        observed = {}
+
+        def capture_roster_env(*args, **kwargs):
+            observed["loop_session"] = os.environ.get("LOOP_SESSION")
+            observed["loop_seat_timeout"] = os.environ.get("LOOP_SEAT_TIMEOUT")
+            return ["claude", "hermes", "kimi"]
+
+        with tempfile.TemporaryDirectory() as td:
+            repo = pathlib.Path(td)
+            plan = repo / "docs" / "superpowers" / "plans" / "example.md"
+            plan.parent.mkdir(parents=True)
+            plan.write_text("# Example Plan\n", encoding="utf-8")
+            config = {
+                "lanes": {"plan_review": {"seats": ["claude", "hermes", "kimi"], "plan_path": str(plan.relative_to(repo))}},
+                "seat_models": {},
+            }
+            with mock.patch.dict(os.environ, {"LOOP_SESSION": "stale-session"}, clear=False), \
+                    mock.patch.object(concilium_lanes.process_runner, "run_process_group", side_effect=self._successful_process), \
+                    mock.patch.object(concilium_lanes.conductor, "write_roster", side_effect=capture_roster_env), \
+                    mock.patch.object(concilium_lanes.conductor, "set_participants"), \
+                    mock.patch.object(
+                        concilium_lanes.conductor,
+                        "timed_run_seat",
+                        side_effect=[(0, "VERDICT: PASS"), (0, "VERDICT: PASS"), (0, "VERDICT: PASS")],
+                    ):
+                result = concilium_lanes.run_plan_review_lane(repo, "方案评审，只评不改。", "", config, timeout=12)
+                self.assertEqual(os.environ.get("LOOP_SESSION"), "stale-session")
+
+        self.assertEqual(result["status"], "passed")
+        self.assertNotEqual(observed["loop_session"], "stale-session")
+        self.assertTrue(observed["loop_session"].startswith("plan-review-"))
+        self.assertEqual(observed["loop_seat_timeout"], "12")
 
 
 if __name__ == "__main__":
