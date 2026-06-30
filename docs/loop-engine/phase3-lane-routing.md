@@ -58,6 +58,48 @@ Use it for high-risk or ambiguous work where the extra planning and review cost 
 
 This lane uses the existing conductor loop: planner assigns work, executor implements, independent reviewer verifies, and BLOCK feedback can drive another round.
 
+### Audit Lane
+
+Audit Lane is reviewer-only, read-only roundtable work.
+
+Use it when the task is to inspect architecture, security, business state, memory boundaries, or a finished project without modifying the target system. This lane must not dispatch maker/executor seats. It should collect independent reviewer outputs, run explicit evidence commands, and close only when the required report artifact exists and the final workspace delta matches the allowed write paths.
+
+Product configuration should expose this as:
+
+- `audit.seats`
+- `audit.default_reviewer`
+- `audit.allowed_report_paths`
+
+Each seat event must identify its actual backend, not only its display seat name. A Codex-hosted subagent review is `codex_subagent`; a real `seat-*.sh` native CLI seat, including `seat-codex.sh`, is `external_cli`; a configured ordinary lane seat is `configured_seat`.
+
+Current implementation status: the runtime now routes read-only audit tasks to Audit Lane, dispatches configured reviewer seats through the existing external `seat-*.sh` runner, exposes seat backend provenance, writes a combined audit report when `required_artifact_paths` is supplied, and enforces the report artifact gate. A Claude/Kimi/Hermes/Codex audit seat marked `external_cli` means the native CLI runner was invoked; a Codex-hosted internal review must be marked separately as `codex_subagent`.
+
+### Legacy Roundtable Read-Only Audit Guard
+
+Direct legacy `roundtable` / `conductor.py` invocations now apply the same first-principles boundary when the task is explicitly read-only audit or review work:
+
+- no commander planning step;
+- no `exec` subtasks;
+- selected seats run in `review` mode only;
+- strict artifact gate fails the run on any project delta outside explicit allowed paths.
+
+The guard exists for backward compatibility. Concilium Audit Lane remains the preferred product entry point because it has structured routing, preflight, seat provenance, and report artifact semantics.
+
+### Plan Review Lane
+
+Plan Review Lane is reviewer-only review of an execution plan before implementation starts.
+
+Use it when the work is to approve or block a plan, not to implement the plan. Each reviewer must either PASS or return a BLOCK with enough detail for the plan owner to patch the plan artifact. Reviewers must not modify files.
+
+The host loop is:
+
+1. run one `plan_review` reviewer round;
+2. if any reviewer ERRs, retry or mark that reviewer unavailable before changing the plan;
+3. if reviewers BLOCK and the round cap is not reached, the plan owner patches only the plan artifact;
+4. re-run review until all available reviewers PASS or `plan_review.max_rounds` is reached.
+
+Default `plan_review.max_rounds` is `3`. The runtime enforces that review rounds do not change the plan file or other project files, and the host-loop helper enforces that revision steps change only the reviewed plan artifact.
+
 ## Routing Table
 
 | Signal | Lane | Reason |
@@ -66,6 +108,8 @@ This lane uses the existing conductor loop: planner assigns work, executor imple
 | Clear implementation but semantic/risk edge exists | Review Lane | Adds independent review without planner overhead. |
 | Multiple plausible approaches or unclear success criteria | Roundtable Lane | Planning is part of the work. |
 | Security, architecture, migration, or high-impact business decision | Roundtable Lane | The cost of a miss can exceed roundtable latency. |
+| Read-only architecture/security/business/memory audit with a single allowed report | Audit Lane | Independent review is needed, but executor seats would violate the write boundary. |
+| Execution-plan review or plan approval before implementation | Plan Review Lane | Reviewer-only BLOCK/PASS loop must converge before maker work starts. |
 | Fast Lane fails verification | Review Lane | A second seat can diagnose before full escalation. |
 | Review Lane blocks twice | Roundtable Lane | The task likely needs structured decomposition. |
 
@@ -86,8 +130,9 @@ Minimum setup questions:
 1. Default simple-task agent/model (`default_single_agent`).
 2. Default review executor and reviewer.
 3. Roundtable seats and preferred planner/reviewer.
-4. Project risk tolerance: speed-first, balanced, or review-first.
-5. Required verification commands or evidence types.
+4. Audit seats and allowed report paths.
+5. Project risk tolerance: speed-first, balanced, or review-first.
+6. Required verification commands or evidence types.
 
 The UI should make lane choice visible before execution and let users override it per task.
 
@@ -99,7 +144,9 @@ Current rules:
 
 - Fast Lane: low risk, one file or smaller, clear task, not security-sensitive.
 - Review Lane: bounded medium-risk tasks, especially config, routing, or evaluation changes.
-- Roundtable Lane: ambiguous, security-sensitive, architecture, migration, high-impact, or four-or-more-file tasks.
+- Audit Lane: read-only audit/review tasks with explicit write boundaries.
+- Plan Review Lane: explicit execution-plan review tasks, before generic audit/review/roundtable routing.
+- Roundtable Lane: ambiguous, security-sensitive, architecture, migration, high-impact, or four-or-more-file tasks when execution or repair may be needed.
 
 Preflight is applied after routing. A blocked required seat must surface as a blocked decision for the selected lane; the router must not silently change Review Lane to Fast Lane to work around a missing reviewer.
 
@@ -120,10 +167,14 @@ Required fields per seat call:
 - iteration;
 - seat;
 - mode;
+- backend type;
+- provider and model when available;
 - return code;
 - duration in seconds.
 
 Reports should surface this timing next to the minute index so the user can see where latency is spent.
+
+Audit Lane also requires an artifact gate. The run is not complete unless every `required_artifact_paths` entry exists, each required path is non-empty and newly written or changed after the run baseline, each required path matches the allowed write patterns, and every post-baseline git delta path matches the allowed write patterns. This prevents a run from being marked complete when the reviewers produced useful private session logs, failed to create the user-visible report, reused a stale report, or changed files outside the read-only audit boundary.
 
 ## Current Phase 3 Hypothesis
 

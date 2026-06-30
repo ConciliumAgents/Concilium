@@ -34,6 +34,22 @@ class CapacityStatusTests(unittest.TestCase):
         self.assertNotIn("abc.def.ghi", redacted)
         self.assertIn("[REDACTED]", redacted)
 
+    def test_redaction_removes_common_env_query_and_auth_header_secrets(self):
+        text = (
+            "OPENAI_API_KEY=oa-secret "
+            "ANTHROPIC_AUTH_TOKEN=anthropic-secret "
+            "https://example.test/callback?client_secret=client-secret&safe=value "
+            "Authorization: Bearer bearer-secret"
+        )
+
+        redacted = capacity_status.redact(text)
+
+        for secret in ("oa-secret", "anthropic-secret", "client-secret", "bearer-secret"):
+            with self.subTest(secret=secret):
+                self.assertNotIn(secret, redacted)
+        self.assertIn("safe=value", redacted)
+        self.assertIn("[REDACTED]", redacted)
+
     def test_record_shape_is_stable(self):
         record = capacity_status.make_record(
             seat="kimi",

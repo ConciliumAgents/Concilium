@@ -15,6 +15,11 @@ import argparse, datetime, hashlib, json, os, re, signal, subprocess, sys, time
 from pathlib import Path
 
 BIN = Path(__file__).resolve().parent
+if str(BIN) not in sys.path:
+    sys.path.insert(0, str(BIN))
+
+import concilium_artifacts  # noqa: E402
+
 AGENTS = {"claude", "codex", "hermes", "kimi"}
 # 慢/不宜执行的座位：claude=Opus 易超时；codex=慢且连接坏。这些座位只指挥/验证、不进 exec。
 EXEC_EXCLUDE = {"claude", "codex"}
@@ -23,6 +28,45 @@ EXEC_EXCLUDE = {"claude", "codex"}
 FAST_PRIORITY = ["kimi", "hermes"]
 REVIEW_FALLBACK_PRIORITY = ["claude", "hermes", "kimi", "codex"]
 VERDICT_MAP = {0: "PASS", 2: "BLOCK", 1: "ERR"}
+AUDIT_TERMS = (
+    "audit",
+    "review",
+    "inspect",
+    "审计",
+    "审查",
+    "审核",
+    "复审",
+    "检查",
+)
+READ_ONLY_TERMS = (
+    "read-only",
+    "read only",
+    "readonly",
+    "do not modify",
+    "do not edit",
+    "no changes",
+    "只读",
+    "不要修改",
+    "不修改",
+    "不要改",
+    "不改动",
+    "不写入",
+)
+
+
+def is_read_only_audit_task(task: str) -> bool:
+    text = str(task or "").lower()
+    return any(term in text for term in AUDIT_TERMS) and any(term in text for term in READ_ONLY_TERMS)
+
+
+def split_path_list(value: str | list[str] | tuple[str, ...] | None) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple)):
+        raw_items = [str(item) for item in value]
+    else:
+        raw_items = re.split(r"[,:]", str(value))
+    return [item.strip() for item in raw_items if item.strip()]
 
 
 # ---------------- Reporter：过程事件接口 ----------------
@@ -664,9 +708,86 @@ def _write_round_notes(repo: str, dropped: list, exec_failures: list,
         pass
 
 
+def _run_read_only_audit(
+    repo: str,
+    task: str,
+    commander: str,
+    reviewer: str,
+    max_iters: int,
+    test_cmd: str,
+    reporter: Reporter,
+    seated: list[str],
+    seat_models: dict,
+    required_artifact_paths: list[str] | None,
+    allowed_write_paths: list[str] | None,
+) -> int:
+    del max_iters
+
+    def sm(agent):
+        c = seat_models.get(agent, {})
+        return c.get("provider", ""), c.get("model", "")
+
+    review_seats = [reviewer] if reviewer and reviewer in seated else list(seated)
+    reporter.start(repo, task, commander, "read-only-audit", 1)
+    if not review_seats:
+        reporter.log("[loop-engine] ⚠ 只读审计无可用座位")
+        reporter.finish("ERR", 0)
+        return 1
+
+    nimp = import_memory(repo)
+    if nimp:
+        reporter.log(f"[loop-engine] 记忆桥：导入 {nimp} 份仓库外项目记忆到黑板")
+    _, o = sh_capture("kb-refresh.sh", repo, test_cmd)
+    reporter.log(o)
+    baseline_delta = concilium_artifacts.collect_delta(repo).get("delta_paths", [])
+
+    reporter.round(1)
+    verdicts = []
+    brief = (
+        "Read-only Concilium audit. Inspect the project and memory surfaces, do not modify files, "
+        "and return concrete findings plus VERDICT: PASS or VERDICT: BLOCK."
+    )
+    for seat in review_seats:
+        provider, model = sm(seat)
+        reporter.seat(seat, "review", "只读审计", phase="start")
+        rc, out = timed_run_seat(repo, 1, seat, "review", brief=brief, provider=provider, model=model)
+        reporter.seat(seat, "review", "", rc, phase="done")
+        reporter.transcript(seat, "review", out)
+        verdicts.append(VERDICT_MAP.get(rc, "ERR"))
+
+    allowed = [".roundtable/**"] + list(allowed_write_paths or [])
+    gate = concilium_artifacts.evaluate_artifact_gate(
+        repo,
+        required_artifact_paths=list(required_artifact_paths or []),
+        allowed_write_paths=allowed,
+        baseline_delta_paths=baseline_delta,
+        allow_unlisted_required=False,
+        allow_unlisted_delta=False,
+    )
+    if gate.get("status") != "passed":
+        reporter.log("[artifact_gate] " + json.dumps(gate, ensure_ascii=False, sort_keys=True))
+        reporter.verdict("artifact_gate", "BLOCK")
+        reporter.finish("BLOCK", 1)
+        return 2
+
+    if any(verdict == "BLOCK" for verdict in verdicts):
+        reporter.verdict("read-only-audit", "BLOCK")
+        reporter.finish("BLOCK", 1)
+        return 2
+    if any(verdict == "ERR" for verdict in verdicts):
+        reporter.verdict("read-only-audit", "ERR")
+        reporter.finish("ERR", 1)
+        return 1
+
+    reporter.verdict("read-only-audit", "PASS")
+    reporter.finish("PASS", 1)
+    return 0
+
+
 # ---------------- 主循环（渲染无关）----------------
 def run(repo, task, commander="claude", reviewer="", max_iters=5, test_cmd="",
-        reporter=None, seats=None, seat_models=None) -> int:
+        reporter=None, seats=None, seat_models=None, audit_only=False,
+        required_artifact_paths=None, allowed_write_paths=None) -> int:
     reporter = reporter or TextReporter()
     repo = str(Path(repo).expanduser().resolve())
     seat_models = seat_models or {}
@@ -682,6 +803,20 @@ def run(repo, task, commander="claude", reviewer="", max_iters=5, test_cmd="",
     _, o = sh_capture("roundtable-init.sh", repo, task); reporter.log(o)
     # 写在座花名册（探测 ∩ 勾选），并跑护栏校验
     seated = write_roster(repo, seats, seat_models)
+    if audit_only or is_read_only_audit_task(task):
+        return _run_read_only_audit(
+            repo,
+            task,
+            commander,
+            reviewer,
+            max_iters,
+            test_cmd,
+            reporter,
+            seated,
+            seat_models,
+            split_path_list(required_artifact_paths),
+            split_path_list(allowed_write_paths),
+        )
     # 验证席动态解析（留空=异质飞毛腿优先、claude 兜底）；可执行座位 = 在座 ∩ 非慢座位 ∩ 非验证席。
     reviewer = _resolve_reviewer(seated, reviewer)
     executors = [a for a in seated if a not in EXEC_EXCLUDE and a != reviewer]
@@ -808,13 +943,41 @@ def build_argparser() -> argparse.ArgumentParser:
     ap.add_argument("--max-iters", type=int, default=int(os.environ.get("LOOP_MAX_ITERS", "5")))
     ap.add_argument("--test-cmd", default=os.environ.get("LOOP_TEST_CMD", ""))
     ap.add_argument("--seats", default="", help="只让这些座位上桌，逗号分隔（默认全部可用）")
+    ap.add_argument(
+        "--audit-only",
+        action="store_true",
+        default=os.environ.get("LOOP_AUDIT_ONLY", "").strip().lower() in {"1", "true", "yes", "on"},
+        help="只读审计：只调用 review 座位，不进入 plan/exec",
+    )
+    ap.add_argument(
+        "--required-artifact-paths",
+        default=os.environ.get("LOOP_REQUIRED_ARTIFACT_PATHS", ""),
+        help="必须存在/变化的产物路径，逗号或冒号分隔",
+    )
+    ap.add_argument(
+        "--allowed-write-paths",
+        default=os.environ.get("LOOP_ALLOWED_WRITE_PATHS", ""),
+        help="允许新增/修改的路径，逗号或冒号分隔；只读审计默认不允许项目写入",
+    )
     return ap
 
 
 def main() -> int:
     a = build_argparser().parse_args()
     seats = [x.strip() for x in a.seats.split(",") if x.strip()] or None
-    return run(a.repo, a.task, a.commander, a.reviewer, a.max_iters, a.test_cmd, TextReporter(), seats=seats)
+    return run(
+        a.repo,
+        a.task,
+        a.commander,
+        a.reviewer,
+        a.max_iters,
+        a.test_cmd,
+        TextReporter(),
+        seats=seats,
+        audit_only=a.audit_only,
+        required_artifact_paths=split_path_list(a.required_artifact_paths),
+        allowed_write_paths=split_path_list(a.allowed_write_paths),
+    )
 
 
 if __name__ == "__main__":

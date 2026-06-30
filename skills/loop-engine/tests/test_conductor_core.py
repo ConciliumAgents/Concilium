@@ -98,6 +98,12 @@ class ConductorPatch:
 
 
 class ConductorCoreTests(unittest.TestCase):
+    def test_split_path_list_accepts_commas_and_colons(self):
+        self.assertEqual(
+            conductor.split_path_list("docs/a.md,docs/b.md:reports/c.md"),
+            ["docs/a.md", "docs/b.md", "reports/c.md"],
+        )
+
     def test_review_err_falls_back_to_alternate_reviewer(self):
         calls = []
         reporter = QuietReporter()
@@ -217,6 +223,85 @@ class ConductorCoreTests(unittest.TestCase):
             self.assertEqual(row["iter"], 1)
             self.assertIsInstance(row["duration_seconds"], float)
             self.assertGreaterEqual(row["duration_seconds"], 0.0)
+
+    def test_read_only_audit_task_routes_only_reviewers(self):
+        calls = []
+        reporter = QuietReporter()
+        with tempfile.TemporaryDirectory() as td:
+            repo = pathlib.Path(td)
+            init_repo(repo)
+
+            def fake_run_seat(agent, mode, repo_arg, brief="", extra=None, provider="", model=""):
+                calls.append((agent, mode, brief))
+                if mode in {"plan", "exec"}:
+                    return self.fail(f"read-only audit must not call {mode}")
+                if mode == "review":
+                    return 0, "VERDICT: PASS\n"
+                return self.fail(f"unexpected call: {agent} {mode}")
+
+            with ConductorPatch(self, repo, fake_run_seat):
+                rc = conductor.run(
+                    str(repo),
+                    "Read-only audit the architecture and memory system.",
+                    max_iters=2,
+                    reporter=reporter,
+                )
+
+        self.assertEqual(rc, 0)
+        self.assertTrue(calls)
+        self.assertEqual({mode for _agent, mode, _brief in calls}, {"review"})
+        self.assertIn(("finish", "PASS", 1), reporter.events)
+
+    def test_audit_only_flag_routes_only_reviewers_even_without_keywords(self):
+        calls = []
+        reporter = QuietReporter()
+        with tempfile.TemporaryDirectory() as td:
+            repo = pathlib.Path(td)
+            init_repo(repo)
+
+            def fake_run_seat(agent, mode, repo_arg, brief="", extra=None, provider="", model=""):
+                calls.append((agent, mode))
+                if mode in {"plan", "exec"}:
+                    return self.fail(f"audit_only must not call {mode}")
+                return 0, "VERDICT: PASS\n"
+
+            with ConductorPatch(self, repo, fake_run_seat):
+                rc = conductor.run(
+                    str(repo),
+                    "Inspect architecture.",
+                    max_iters=2,
+                    reporter=reporter,
+                    audit_only=True,
+                )
+
+        self.assertEqual(rc, 0)
+        self.assertEqual({mode for _agent, mode in calls}, {"review"})
+
+    def test_read_only_audit_blocks_disallowed_delta(self):
+        reporter = QuietReporter()
+        with tempfile.TemporaryDirectory() as td:
+            repo = pathlib.Path(td)
+            init_repo(repo)
+
+            def fake_run_seat(agent, mode, repo_arg, brief="", extra=None, provider="", model=""):
+                if mode != "review":
+                    return self.fail(f"read-only audit must not call {mode}")
+                pathlib.Path(repo_arg, "leak.md").write_text("modified by reviewer\n", encoding="utf-8")
+                return 0, "VERDICT: PASS\n"
+
+            with ConductorPatch(self, repo, fake_run_seat):
+                rc = conductor.run(
+                    str(repo),
+                    "Read-only audit the architecture.",
+                    max_iters=1,
+                    reporter=reporter,
+                    allowed_write_paths=[],
+                )
+
+            self.assertTrue((repo / "leak.md").exists())
+
+        self.assertEqual(rc, 2)
+        self.assertIn(("finish", "BLOCK", 1), reporter.events)
 
 
 if __name__ == "__main__":

@@ -29,6 +29,24 @@ def _latest_seat_event(events: list[dict]) -> dict:
     return {}
 
 
+def _latest_event_of_type(events: list[dict], event_type: str) -> dict:
+    for event in reversed(_dict_items(events)):
+        if event.get("type") == event_type:
+            return event
+    return {}
+
+
+def _seat_event_by_name(events: list[dict]) -> dict[str, dict]:
+    result = {}
+    for event in _dict_items(events):
+        if event.get("type") != "seat":
+            continue
+        seat = str(event.get("seat") or event.get("agent") or "")
+        if seat:
+            result[seat] = event
+    return result
+
+
 def build_popover_model(status: dict, effective_config: dict, preflight: dict, events: list[dict]) -> dict:
     status = _dict(status)
     effective_config = _dict(effective_config)
@@ -41,6 +59,8 @@ def build_popover_model(status: dict, effective_config: dict, preflight: dict, e
     guard = _dict(preflight.get("run_guard") or preflight.get("guard"))
     capacity = _dict_items(preflight.get("capacity"))
     latest_event = _latest_seat_event(events)
+    latest_artifact_gate = _latest_event_of_type(events, "artifact_gate")
+    seat_events = _seat_event_by_name(events)
     guard_status = str(guard.get("status") or "")
     blocked = guard_status in BLOCKING_GUARD_STATUSES or preflight_status.get("status") == "blocked"
 
@@ -71,11 +91,15 @@ def build_popover_model(status: dict, effective_config: dict, preflight: dict, e
         "seat_capacity": [
             {
                 "seat": item.get("seat", ""),
+                "backend_type": _dict(seat_events.get(str(item.get("seat", "")))).get("backend_type", ""),
                 "provider": item.get("provider", ""),
                 "model": item.get("model", ""),
                 "status": item.get("status", "unknown"),
+                "capacity_source": item.get("source", ""),
                 "checked_at": item.get("checked_at", ""),
                 "reset_at": item.get("reset_at", ""),
+                "event_status": _dict(seat_events.get(str(item.get("seat", "")))).get("status", ""),
+                "event_reason": _dict(seat_events.get(str(item.get("seat", "")))).get("reason", ""),
             }
             for item in capacity
         ],
@@ -96,6 +120,7 @@ def build_popover_model(status: dict, effective_config: dict, preflight: dict, e
             "active_seat": latest_event.get("agent") or latest_event.get("seat", ""),
             "latest_event": latest_event.get("type", ""),
             "phase": latest_event.get("phase", ""),
+            "artifact_gate": latest_artifact_gate.get("artifact_gate", {}),
             "elapsed_seconds": latest_event.get("elapsed_seconds", 0),
         },
         "debug_action": {"label": "Open Debug Console", "target": "webui"},

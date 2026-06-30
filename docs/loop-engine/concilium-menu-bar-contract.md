@@ -50,3 +50,37 @@ No token file is written unless the caller explicitly supplies `--token-file`.
 8. Debug Console action
 
 The menu bar shell owns lifecycle, presentation, and user intent only. Routing, capacity policy, maker-checker review, and execution stay in the Concilium service/runtime.
+
+## Seat Provenance
+
+Seat display names are not enough to explain quota usage. Runtime events and popover summaries should preserve:
+
+- `seat`
+- `backend_type`: `codex_subagent`, `external_cli`, or `configured_seat`
+- `provider`
+- `model`
+- `capacity_status`
+- `capacity_source`
+- `status`
+- `reason`
+
+This lets the user distinguish a Codex-hosted subagent audit from a real `seat-*.sh` CLI seat, including `seat-codex.sh`. The menu bar should show backend type near the seat name when it differs from the user's expected roster.
+
+When a runtime slice has not actually dispatched a reviewer seat, it must emit `status: not_invoked` instead of implying quota was consumed.
+
+## Audit Artifact Gate
+
+Read-only Audit Lane runs must expose artifact-gate status in the event stream. A run can be operationally useful but still incomplete when the required report was not written, was empty or stale, or when new workspace delta escaped the allowed report paths. The UI should treat `artifact_gate.status != "passed"` as a blocked/completion-failed state and surface `missing`, `empty`, `unchanged_required`, `disallowed`, and `disallowed_delta` without showing secret-bearing raw logs.
+
+Strict artifact failures may also include invalid paths. The UI should display these as configuration or request errors, not as reviewer findings, because the orchestrator rejected the write boundary before trusting any generated report path.
+
+## Plan Review Loop
+
+Plan Review Lane runs should surface:
+
+- current round and max rounds;
+- reviewer seat results and backend provenance;
+- `unresolved_blockers`;
+- whether the next action is retry reviewer, revise plan, approved, or max rounds reached.
+
+The menu bar should not present Plan Review Lane as implementation progress. It is a pre-implementation gate: reviewers only review, and any plan revision is a host/user action that may change only the reviewed plan artifact.

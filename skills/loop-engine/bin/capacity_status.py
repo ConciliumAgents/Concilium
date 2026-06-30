@@ -11,6 +11,16 @@ REDACTED = "[REDACTED]"
 EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 API_KEY_RE = re.compile(r"\bsk-[A-Za-z0-9_-]+\b")
 JWT_LIKE_RE = re.compile(r"\b[A-Za-z0-9_-]{3,}\.[A-Za-z0-9_-]{3,}\.[A-Za-z0-9_-]{3,}\b")
+QUERY_SECRET_RE = re.compile(
+    r"([?&][A-Za-z0-9_.-]*(?:key|token|secret|password|credential)[A-Za-z0-9_.-]*=)[^&\s\"']+",
+    re.I,
+)
+ASSIGNMENT_SECRET_RE = re.compile(
+    r"(?<![?&A-Za-z0-9_.-])([A-Z][A-Z0-9_]*(?:API[_-]?KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|AUTHORIZATION)[A-Z0-9_]*\s*[:=]\s*)[^\s\"']+",
+    re.I,
+)
+AUTH_HEADER_RE = re.compile(r"\b(Authorization\s*[:=]\s*(?:Bearer|Basic)\s+)[^\s\"']+", re.I)
+SORFTIME_URL_RE = re.compile(r"\b(SORFTIME_MCP_URL\s*=\s*)[^\s\"']+", re.I)
 
 
 def classify_percent(percent_remaining: float | int | None, warn_below: int, block_below: int) -> str:
@@ -27,6 +37,10 @@ def redact(text: str) -> str:
     value = API_KEY_RE.sub(REDACTED, text)
     value = EMAIL_RE.sub(REDACTED, value)
     value = JWT_LIKE_RE.sub(REDACTED, value)
+    value = QUERY_SECRET_RE.sub(r"\1" + REDACTED, value)
+    value = AUTH_HEADER_RE.sub(r"\1" + REDACTED, value)
+    value = ASSIGNMENT_SECRET_RE.sub(r"\1" + REDACTED, value)
+    value = SORFTIME_URL_RE.sub(r"\1" + REDACTED, value)
     return value
 
 

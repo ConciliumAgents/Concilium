@@ -18,6 +18,9 @@ ROUNDTABLE_TERMS = {
     "high-impact",
     "business decision",
 }
+AUDIT_TERMS = {"audit", "review", "审查", "审计"}
+READ_ONLY_TERMS = {"read-only", "readonly", "只读", "不要修改", "不得修改", "only write", "只允许新增"}
+PLAN_REVIEW_TERMS = {"execution plan", "implementation plan", "执行方案", "实施方案", "计划审查", "审核方案"}
 DOC_ONLY_RE = re.compile(r"\b(?:docs?|markdown|readme|typo)\b", re.I)
 
 
@@ -54,6 +57,15 @@ def required_seats_for_lane(lane: str, config: dict) -> list[str]:
             review.get("default_review_executor", "kimi"),
             review.get("default_review_reviewer", "hermes"),
         ])
+    if lane == "audit":
+        audit = lanes.get("audit", {})
+        seats = list(audit.get("seats") or [])
+        if not seats:
+            seats = [audit.get("default_reviewer", "codex")]
+        return _unique(seats)
+    if lane == "plan_review":
+        plan_review = lanes.get("plan_review", {})
+        return _unique(list(plan_review.get("seats") or lanes.get("audit", {}).get("seats") or ["codex"]))
     if lane == "roundtable":
         roundtable = lanes.get("roundtable", {})
         seats = [roundtable.get("commander", "claude")]
@@ -80,7 +92,18 @@ def route_task(task: str, signals: dict, config: dict) -> dict:
     file_count = int(merged.get("file_count", 1) or 1)
     ambiguous = bool(merged.get("ambiguous", False))
     security_sensitive = bool(merged.get("security_sensitive", False))
+    read_only = bool(merged.get("read_only", False))
     risk_posture = config.get("routing", {}).get("risk_posture", "balanced")
+
+    plan_review = bool(merged.get("plan_review", False)) or any(term in text for term in PLAN_REVIEW_TERMS)
+    if plan_review:
+        return _route("plan_review", "execution-plan review uses bounded reviewer loop before implementation", config)
+
+    if (
+        read_only
+        or any(term in text for term in READ_ONLY_TERMS)
+    ) and any(term in text for term in AUDIT_TERMS):
+        return _route("audit", "read-only audit uses reviewer-only lane with artifact gate", config)
 
     if ambiguous or security_sensitive or risk == "high" or file_count >= 4 or any(term in text for term in ROUNDTABLE_TERMS):
         return _route("roundtable", "ambiguous or high-risk task needs full roundtable", config)

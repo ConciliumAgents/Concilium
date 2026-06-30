@@ -276,9 +276,21 @@ function handle(ev){
     case "round": $("#round").textContent=ev.it; SEATS.forEach(s=>setSeat(s,"idle","待命")); logLine("——— 第 "+ev.it+" 轮 ———",true); break;
     case "plan": logLine("派活："+ev.plan.map(p=>p.agent+"←"+p.subtask.slice(0,22)).join("; ")); break;
     case "seat":
-      if(ev.phase==="start"){ setSeat(ev.agent,"working",ev.mode+" "+(ev.subtask||"").slice(0,16)); logLine("→ "+ev.agent+" ["+ev.mode+"] "+(ev.subtask||"").slice(0,40)); }
-      else{ let st=ev.rc===0?"done":"err"; if(ev.mode==="review"){ st = ev.rc===0?"done":(ev.rc===2?"block":"err"); }
-            setSeat(ev.agent,st,"rc="+ev.rc); logLine("✓ "+ev.agent+" ["+ev.mode+"] rc="+ev.rc); }
+      {
+        const seat = ev.agent || ev.seat || "-";
+        const label = ev.backend_type ? `${seat} · ${ev.backend_type}` : seat;
+        if(ev.status==="not_invoked"){
+          setSeat(seat,"idle","not invoked");
+          logLine("· "+label+" 未调用："+(ev.reason||"not invoked"));
+        }else if(ev.phase==="start"){
+          setSeat(seat,"working",(ev.mode||ev.lane||"seat")+" "+(ev.subtask||"").slice(0,16));
+          logLine("→ "+label+" ["+(ev.mode||ev.lane||"-")+"] "+(ev.subtask||"").slice(0,40));
+        }else{
+          let st=ev.rc===0?"done":"err"; if(ev.mode==="review"){ st = ev.rc===0?"done":(ev.rc===2?"block":"err"); }
+          setSeat(seat,st,ev.rc == null ? (ev.status||"") : "rc="+ev.rc);
+          logLine("✓ "+label+" ["+(ev.mode||ev.lane||"-")+"] "+(ev.rc == null ? (ev.status||"") : "rc="+ev.rc));
+        }
+      }
       break;
     case "verdict":{ const vb=$("#verdict"); vb.className="badge b-"+(ev.verdict||"RUN"); vb.textContent=ev.verdict; logLine("裁决："+ev.reviewer+" → "+ev.verdict,true); break; }
     case "log": logLine(ev.msg); break;
@@ -288,8 +300,20 @@ function handle(ev){
       const pre=document.createElement("pre"); pre.textContent=ev.text;
       d.appendChild(sm); d.appendChild(pre); el.appendChild(d); break;
     }
-    case "finish":{ const vb=$("#verdict"); const m={PASS:"✅ 通过收工",BLOCK:"被拦下",ERR:"验证ERR",CAP:"触顶交还人工"}[ev.status]||ev.status;
-            vb.className="badge b-"+(ev.status==="PASS"?"PASS":"BLOCK"); vb.textContent=m; logLine(m,true); break; }
+    case "finish":{ const vb=$("#verdict"); const status = ev.status || (ev.rc===0 ? "PASS" : "ERR");
+            const m={PASS:"✅ 通过收工",BLOCK:"被拦下",ERR:"验证ERR",CAP:"触顶交还人工"}[status]||status;
+            vb.className="badge b-"+(status==="PASS"?"PASS":"BLOCK"); vb.textContent=m; logLine(m,true); break; }
+    case "artifact_gate":{
+      const gate = ev.artifact_gate || {};
+      const problems = []
+        .concat(gate.missing || [])
+        .concat(gate.empty || [])
+        .concat(gate.unchanged_required || [])
+        .concat(gate.disallowed || [])
+        .concat(gate.disallowed_delta || []);
+      logLine("artifact gate: "+(gate.status||"-")+(problems.length ? " · "+problems.join(", ") : ""), gate.status!=="passed");
+      break;
+    }
     case "error": logLine("错误："+ev.msg,true); break;
     case "done": logLine("（本次结束，退出码 "+ev.rc+"）",true); break;
   }

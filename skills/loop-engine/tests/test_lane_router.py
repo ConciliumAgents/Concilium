@@ -23,6 +23,12 @@ class LaneRouterTests(unittest.TestCase):
                     "default_review_reviewer": "hermes",
                     "review_repair_limit": 1,
                 },
+                "audit": {
+                    "default_reviewer": "codex",
+                    "seats": ["codex", "claude"],
+                    "allowed_report_paths": ["docs/audits/*.md"],
+                },
+                "plan_review": {"seats": ["claude", "kimi", "hermes", "codex"], "max_rounds": 3},
                 "roundtable": {"commander": "claude", "reviewer": "", "seats": ["claude", "hermes", "kimi"]},
             },
             "routing": {"risk_posture": "balanced", "allow_auto_escalation": True, "allow_auto_downgrade": False},
@@ -54,6 +60,37 @@ class LaneRouterTests(unittest.TestCase):
         )
         self.assertEqual(result["lane"], "roundtable")
         self.assertIn("claude", result["required_seats"])
+
+    def test_read_only_audit_routes_to_audit_lane(self):
+        result = lane_router.route_task(
+            task=(
+                "Use Roundtable to audit architecture and memory. "
+                "Read-only review; do not modify code; only write docs/audits/report.md."
+            ),
+            signals={
+                "file_count": 20,
+                "risk": "high",
+                "security_sensitive": False,
+                "ambiguous": True,
+                "read_only": True,
+                "allowed_write_paths": ["docs/audits/report.md"],
+            },
+            config=self.base_config(),
+        )
+
+        self.assertEqual(result["lane"], "audit")
+        self.assertEqual(result["required_seats"], ["codex", "claude"])
+        self.assertIn("read-only", result["reason"])
+
+    def test_execution_plan_review_routes_to_plan_review_lane(self):
+        result = lane_router.route_task(
+            "审核执行方案 docs/superpowers/plans/example.md，成员 BLOCK 后修改方案并复审",
+            {"plan_review": True, "plan_path": "docs/superpowers/plans/example.md"},
+            self.base_config(),
+        )
+
+        self.assertEqual(result["lane"], "plan_review")
+        self.assertIn("review", result["reason"])
 
     def test_preflight_block_does_not_silent_downgrade(self):
         result = lane_router.apply_preflight(

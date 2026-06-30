@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import contextlib
+import hashlib
 import json
 import os
 import re
@@ -14,6 +15,7 @@ BIN = Path(__file__).resolve().parent
 sys.path.insert(0, str(BIN))
 
 import capacity_status  # noqa: E402
+import concilium_artifacts  # noqa: E402
 import conductor  # noqa: E402
 import process_runner  # noqa: E402
 
@@ -135,6 +137,262 @@ def run_review_lane(repo: str | Path, task: str, test_cmd: str, config: dict, ti
     result["status"] = "ran"
     result["lane"] = "review"
     return result
+
+
+def run_audit_lane(repo: str | Path, task: str, test_cmd: str, config: dict, timeout: int) -> dict:
+    repo_path = Path(repo).expanduser().resolve()
+    audit = config.get("lanes", {}).get("audit", {})
+    seats = list(audit.get("seats") or [audit.get("default_reviewer", "codex")])
+    required_artifacts = list(audit.get("required_artifact_paths") or [])
+    if "allowed_write_paths" in audit:
+        allowed_artifacts = list(audit.get("allowed_write_paths") or [])
+    else:
+        allowed_artifacts = list(audit.get("allowed_report_paths") or [])
+    env = dict(os.environ)
+    env["LOOP_SESSION"] = env.get("LOOP_SESSION") or f"audit-{_slug(task)}"
+    env["LOOP_SEAT_TIMEOUT"] = str(timeout)
+    env["LOOP_ARCHIVE"] = "0"
+    scoped = {key: env[key] for key in ("LOOP_SESSION", "LOOP_SEAT_TIMEOUT", "LOOP_ARCHIVE")}
+
+    with _scoped_env(scoped):
+        rc, out = _run_bin([str(BIN / "roundtable-init.sh"), str(repo_path), task], env, timeout)
+        if rc != 0:
+            raise RuntimeError(out.strip() or "roundtable-init.sh failed")
+        conductor.write_roster(str(repo_path), seats=seats, seat_models=config.get("seat_models", {}))
+        refresh_rc, refresh_out = _run_bin([str(BIN / "kb-refresh.sh"), str(repo_path), test_cmd], env, timeout)
+        if refresh_rc != 0:
+            raise RuntimeError(refresh_out.strip() or "kb-refresh.sh failed")
+
+        seat_results = []
+        for seat in seats:
+            model_config = dict(config.get("seat_models", {}).get(seat, {}))
+            provider = str(model_config.get("provider", ""))
+            model = str(model_config.get("model", ""))
+            brief = (
+                "Read-only Concilium Audit Lane review. Inspect the target project, do not modify files, "
+                "and include concrete findings plus VERDICT: PASS or VERDICT: BLOCK."
+            )
+            src, sout = conductor.timed_run_seat(str(repo_path), 1, seat, "review", brief=brief, provider=provider, model=model)
+            seat_results.append({
+                "seat": seat,
+                "mode": "review",
+                "backend_type": "external_cli",
+                "status": "invoked",
+                "rc": int(src),
+                "output_tail": capacity_status.redact(str(sout)[-4000:]),
+            })
+
+        verify_rc, verify_out = _run_shell(test_cmd, repo_path, timeout)
+        report_path = ""
+        if required_artifacts:
+            strict_empty_allow_list = "allowed_write_paths" in audit and not allowed_artifacts
+            pre_gate = concilium_artifacts.evaluate_artifact_gate(
+                repo_path,
+                required_artifact_paths=required_artifacts,
+                allowed_write_paths=allowed_artifacts,
+                baseline_delta_paths=concilium_artifacts.collect_delta(repo_path).get("delta_paths", []),
+                allow_unlisted_required=not strict_empty_allow_list,
+                allow_unlisted_delta=not strict_empty_allow_list,
+            )
+            if pre_gate.get("invalid") or pre_gate.get("disallowed"):
+                return {
+                    "status": "artifact_failed",
+                    "lane": "audit",
+                    "returncode": 2,
+                    "seat_results": seat_results,
+                    "report_path": "",
+                    "artifact_gate": pre_gate,
+                    "verify": {"returncode": verify_rc, "output": verify_out[-4000:]},
+                }
+            report_path = _write_audit_report(repo_path, task, test_cmd, seat_results, verify_rc, verify_out, required_artifacts)
+        failing_rcs = [int(result["rc"]) for result in seat_results if int(result["rc"]) != 0]
+        if any(rc not in (0, 2) for rc in failing_rcs):
+            returncode = 1
+        elif any(rc == 2 for rc in failing_rcs):
+            returncode = 2
+        else:
+            returncode = verify_rc
+        status = "ran" if returncode == 0 else "blocked" if returncode == 2 else "error"
+
+    return {
+        "status": status,
+        "lane": "audit",
+        "returncode": returncode,
+        "seat_results": seat_results,
+        "report_path": report_path,
+        "verify": {"returncode": verify_rc, "output": verify_out[-4000:]},
+    }
+
+
+def _write_audit_report(
+    repo: Path,
+    task: str,
+    test_cmd: str,
+    seat_results: list[dict],
+    verify_rc: int,
+    verify_out: str,
+    required_artifacts: list[str],
+) -> str:
+    if not required_artifacts:
+        return ""
+    report = repo / str(required_artifacts[0]).lstrip("/")
+    report.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        "# Concilium Audit Report",
+        "",
+        f"Task: {task}",
+        f"Verification command: {test_cmd or '(none)'}",
+        f"Verification return code: {verify_rc}",
+        "",
+        "## Seat Reviews",
+        "",
+    ]
+    for result in seat_results:
+        lines += [
+            f"### {result.get('seat', '')}",
+            "",
+            f"- mode: {result.get('mode', '')}",
+            f"- returncode: {result.get('rc', '')}",
+            "",
+            "```text",
+            str(result.get("output_tail", "")),
+            "```",
+            "",
+        ]
+    lines += [
+        "## Verification Output",
+        "",
+        "```text",
+        capacity_status.redact(str(verify_out)[-4000:]),
+        "```",
+        "",
+    ]
+    report.write_text("\n".join(lines), encoding="utf-8")
+    return str(report.relative_to(repo))
+
+
+def run_plan_review_lane(repo: str | Path, task: str, test_cmd: str, config: dict, timeout: int) -> dict:
+    del test_cmd, timeout
+    repo_path = Path(repo).expanduser().resolve()
+    plan_review = config.get("lanes", {}).get("plan_review", {})
+    seats = list(plan_review.get("seats") or config.get("lanes", {}).get("audit", {}).get("seats") or ["codex"])
+    plan_path = str(plan_review.get("plan_path") or "")
+    raw_plan_path = Path(plan_path)
+    if not plan_path or raw_plan_path.is_absolute() or ".." in raw_plan_path.parts:
+        return {
+            "status": "blocked",
+            "lane": "plan_review",
+            "returncode": 2,
+            "rounds": 0,
+            "seat_results": [],
+            "unresolved_blockers": [{"severity": "HIGH", "summary": f"plan_path is missing or outside repo: {plan_path}"}],
+        }
+
+    plan_file = (repo_path / raw_plan_path).resolve()
+    try:
+        plan_file.relative_to(repo_path)
+    except ValueError:
+        return {
+            "status": "blocked",
+            "lane": "plan_review",
+            "returncode": 2,
+            "rounds": 0,
+            "seat_results": [],
+            "unresolved_blockers": [{"severity": "HIGH", "summary": f"plan_path is outside repo: {plan_path}"}],
+        }
+    if not plan_file.exists():
+        return {
+            "status": "blocked",
+            "lane": "plan_review",
+            "returncode": 2,
+            "rounds": 0,
+            "seat_results": [],
+            "unresolved_blockers": [{"severity": "HIGH", "summary": f"plan_path is not found: {plan_path}"}],
+        }
+
+    baseline_delta = concilium_artifacts.collect_delta(repo_path).get("delta_paths", [])
+    before_hash = hashlib.sha256(plan_file.read_bytes()).hexdigest()
+    plan_rel = plan_file.relative_to(repo_path).as_posix()
+    before_snapshot = concilium_artifacts.hash_delta_snapshot(repo_path, include_paths=[plan_rel])
+    seat_results = []
+    blockers = []
+    for seat in seats:
+        model_config = dict(config.get("seat_models", {}).get(seat, {}))
+        provider = str(model_config.get("provider", ""))
+        model = str(model_config.get("model", ""))
+        brief = (
+            f"Review execution plan {plan_path}. Do not modify files. "
+            "If blocking, provide severity, plan section or file line, blocker reason, and required change. "
+            "End with VERDICT: PASS or VERDICT: BLOCK."
+        )
+        rc, output = conductor.timed_run_seat(str(repo_path), 1, seat, "review", brief=brief, provider=provider, model=model)
+        result = {
+            "seat": seat,
+            "mode": "review",
+            "backend_type": "external_cli",
+            "status": "invoked",
+            "rc": int(rc),
+            "output_tail": capacity_status.redact(str(output)[-4000:]),
+        }
+        seat_results.append(result)
+        if int(rc) == 2:
+            blockers.append({"seat": seat, "severity": "HIGH", "summary": capacity_status.redact(str(output)[-500:])})
+
+    gate = concilium_artifacts.evaluate_artifact_gate(
+        repo_path,
+        required_artifact_paths=[],
+        allowed_write_paths=[],
+        baseline_delta_paths=baseline_delta,
+        allow_unlisted_required=False,
+        allow_unlisted_delta=False,
+    )
+    fingerprint_changed = hashlib.sha256(plan_file.read_bytes()).hexdigest() != before_hash
+    after_snapshot = concilium_artifacts.hash_delta_snapshot(repo_path, include_paths=[plan_rel])
+    non_plan_review_paths = concilium_artifacts.changed_snapshot_paths(before_snapshot, after_snapshot, allowed_paths=[plan_rel])
+    if gate["status"] != "passed" or fingerprint_changed or non_plan_review_paths:
+        artifact_blockers = []
+        if fingerprint_changed:
+            artifact_blockers.append({"severity": "HIGH", "summary": "plan_fingerprint_changed"})
+        for path in gate.get("disallowed_delta", []):
+            artifact_blockers.append({"severity": "HIGH", "summary": f"disallowed_delta: {path}"})
+        for path in non_plan_review_paths:
+            artifact_blockers.append({"severity": "HIGH", "summary": f"non_plan_review_delta: {path}"})
+        return {
+            "status": "artifact_failed",
+            "lane": "plan_review",
+            "returncode": 2,
+            "rounds": 1,
+            "seat_results": seat_results,
+            "artifact_gate": gate,
+            "unresolved_blockers": artifact_blockers,
+        }
+
+    if any(int(result["rc"]) not in (0, 2) for result in seat_results):
+        return {
+            "status": "retry_required",
+            "lane": "plan_review",
+            "returncode": 1,
+            "rounds": 1,
+            "seat_results": seat_results,
+            "unresolved_blockers": [{"severity": "MEDIUM", "summary": "reviewer ERR; retry, fallback, or mark unavailable"}],
+        }
+    if blockers:
+        return {
+            "status": "blocked",
+            "lane": "plan_review",
+            "returncode": 2,
+            "rounds": 1,
+            "seat_results": seat_results,
+            "unresolved_blockers": blockers,
+        }
+    return {
+        "status": "passed",
+        "lane": "plan_review",
+        "returncode": 0,
+        "rounds": 1,
+        "seat_results": seat_results,
+        "unresolved_blockers": [],
+    }
 
 
 def run_roundtable_lane(

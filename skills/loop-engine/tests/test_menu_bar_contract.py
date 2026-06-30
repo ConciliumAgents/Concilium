@@ -122,6 +122,41 @@ class MenuBarContractTests(unittest.TestCase):
         self.assertTrue(model["primary_action"]["requires_confirmation"])
         self.assertFalse(model["primary_action"]["enabled"])
 
+    def test_view_model_preserves_audit_provenance_and_artifact_gate(self):
+        menu_bar_view_model = load_module("menu_bar_view_model", VIEW_MODEL)
+        fixture = self.fixture("active_fast.json")
+        fixture["preflight"]["route"] = {"lane": "audit", "required_seats": ["codex"]}
+        fixture["preflight"]["capacity"] = [
+            {
+                "seat": "codex",
+                "provider": "openai",
+                "model": "gpt-5.5",
+                "status": "unknown",
+                "source": "not_checked",
+                "checked_at": "2026-06-30T00:00:00Z",
+            }
+        ]
+        fixture["events"] = [
+            {
+                "type": "seat",
+                "seat": "codex",
+                "backend_type": "codex_subagent",
+                "status": "not_invoked",
+                "reason": "reviewer dispatch deferred",
+            },
+            {
+                "type": "artifact_gate",
+                "artifact_gate": {"status": "failed", "disallowed_delta": ["src/app.py"]},
+            },
+        ]
+
+        model = menu_bar_view_model.build_popover_model(**fixture)
+
+        self.assertEqual(model["seat_capacity"][0]["backend_type"], "codex_subagent")
+        self.assertEqual(model["seat_capacity"][0]["capacity_source"], "not_checked")
+        self.assertEqual(model["seat_capacity"][0]["event_status"], "not_invoked")
+        self.assertEqual(model["execution_snapshot"]["artifact_gate"]["disallowed_delta"], ["src/app.py"])
+
     def test_contract_doc_mentions_token_loader_and_effective_config_envelope(self):
         text = (ROOT / "docs" / "loop-engine" / "concilium-menu-bar-contract.md").read_text(encoding="utf-8")
 

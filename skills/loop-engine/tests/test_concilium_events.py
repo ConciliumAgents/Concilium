@@ -22,6 +22,14 @@ class ConciliumEventsTests(unittest.TestCase):
         self.assertEqual(sink.events[0]["type"], "seat")
         self.assertNotIn("sk-secret123", str(sink.events[0]))
 
+    def test_list_sink_redacts_url_key_and_secret_assignments(self):
+        sink = concilium_events.ListEventSink()
+        sink.emit("seat", text="SORFTIME_MCP_URL=https://example.test/mcp?key=abc123")
+
+        payload = str(sink.events[0])
+        self.assertNotIn("abc123", payload)
+        self.assertIn("[REDACTED]", payload)
+
     def test_done_is_emitted_once(self):
         sink = concilium_events.ListEventSink()
         concilium_events.emit_done(sink, rc=0)
