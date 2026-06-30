@@ -158,6 +158,8 @@ The UI should make lane choice visible before execution and let users override i
 
 `roundtable.json.participants` means actual native seats for the current session, after availability filtering. It must not include host-side planning helpers, unavailable seats, or seats that were merely hardcoded by `roundtable-init.sh`.
 
+`roundtable.json.seat_verdicts` records every review-seat verdict call as structured evidence rows: `iter`, `seat`, `mode`, `rc`, and `verdict`. `roundtable.json.verdicts` is the ordered review-call summary derived from those rows, not a replacement for lane return codes or final `conclusion.md` status. Audit Lane and Plan Review Lane reports should use these fields before scraping minute files.
+
 Seat transcripts under `.roundtable/sessions/<sid>/minutes/` are redacted by default before publication. Credential-like strings are filtered through the shared Concilium redactor. Raw transcripts are only retained when `LOOP_KEEP_RAW_MINUTES=1` is explicitly set for local debugging.
 
 ## Implemented Router Contract

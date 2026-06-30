@@ -74,6 +74,8 @@ Read-only Audit Lane runs must expose artifact-gate status in the event stream. 
 
 Strict artifact failures may also include invalid paths. The UI should display these as configuration or request errors, not as reviewer findings, because the orchestrator rejected the write boundary before trusting any generated report path.
 
+For read-only Audit Lane and Plan Review Lane runs, `run_guard.confirmation_payload.files_may_be_modified` means target project files may be edited outside the declared review boundary. It must be `false` when the route is read-only and no caller explicitly overrides it. Report/artifact writes are represented separately through `read_only_task`, `allowed_write_paths`, and `required_artifact_paths` so the UI can say "review is read-only; this report path may be written" instead of warning about arbitrary file edits.
+
 ## Plan Review Loop
 
 Plan Review Lane runs should surface:
