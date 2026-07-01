@@ -6,6 +6,7 @@ import importlib.util
 import pathlib
 import sys
 import unittest
+from unittest import mock
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 MODULE = ROOT / "skills" / "loop-engine" / "bin" / "budget_guard.py"
@@ -417,6 +418,24 @@ class BudgetGuardTests(unittest.TestCase):
         result = concilium_runtime.attach_guard(BASE_PREVIEW)
 
         self.assertEqual(result["guard"]["status"], "allowed")
+
+    def test_runtime_attach_guard_reuses_single_local_guard_module(self):
+        runtime_spec = importlib.util.spec_from_file_location("concilium_runtime", RUNTIME_MODULE)
+        concilium_runtime = importlib.util.module_from_spec(runtime_spec)
+        assert runtime_spec.loader is not None
+        runtime_spec.loader.exec_module(concilium_runtime)
+
+        calls = []
+
+        def fake_evaluate(preview, mode="preview", confirmation=None):
+            calls.append((preview, mode, confirmation))
+            return {"status": "allowed", "requires_confirmation": False, "reason": "", "warnings": []}
+
+        with mock.patch.object(concilium_runtime.budget_guard, "evaluate_budget_guard", side_effect=fake_evaluate):
+            result = concilium_runtime.attach_guard(BASE_PREVIEW)
+
+        self.assertEqual(result["guard"]["status"], "allowed")
+        self.assertEqual(len(calls), 1)
 
     def test_runtime_attach_guard_ignores_shadowed_budget_guard_module(self):
         class ShadowedBudgetGuard:

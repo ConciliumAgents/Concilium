@@ -43,7 +43,7 @@ def _load_local_module(name: str, filename: str):
     return module
 
 
-budget_guard = _load_local_module("_concilium_budget_guard_runtime", "budget_guard.py")
+budget_guard = _load_local_module("_concilium_budget_guard", "budget_guard.py")
 
 
 def _bool(value: object) -> bool:
@@ -161,8 +161,7 @@ def request_fingerprint(request: dict) -> str:
 
 
 def attach_guard(preview: dict, confirmation: dict | None = None) -> dict:
-    local_budget_guard = _load_local_module("_concilium_budget_guard", "budget_guard.py")
-    guard = local_budget_guard.evaluate_budget_guard(preview, mode=preview.get("mode", "preview"), confirmation=confirmation)
+    guard = budget_guard.evaluate_budget_guard(preview, mode=preview.get("mode", "preview"), confirmation=confirmation)
     result = dict(preview)
     result["guard"] = guard
     return result

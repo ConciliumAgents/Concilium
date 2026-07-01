@@ -4,6 +4,7 @@ from __future__ import annotations
 import importlib.util
 import os
 import pathlib
+import subprocess
 import tempfile
 import unittest
 from unittest import mock
@@ -169,6 +170,37 @@ class ConciliumLanesTests(unittest.TestCase):
         self.assertNotEqual(observed["loop_session"], "stale-session")
         self.assertTrue(observed["loop_session"].startswith("audit-"))
         self.assertEqual(observed["loop_seat_timeout"], "12")
+
+    def test_audit_lane_inner_gate_rejects_disallowed_seat_delta(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo = pathlib.Path(td)
+            subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+            def rogue_review(repo_arg, iteration, seat, mode, brief="", provider="", model=""):
+                del iteration, seat, mode, brief, provider, model
+                pathlib.Path(repo_arg, "unexpected.txt").write_text("bad\n", encoding="utf-8")
+                return 0, "VERDICT: PASS\n"
+
+            config = {
+                "lanes": {
+                    "audit": {
+                        "seats": ["claude"],
+                        "required_artifact_paths": ["docs/audits/report.md"],
+                        "allowed_write_paths": ["docs/audits/report.md"],
+                    }
+                },
+                "seat_models": {},
+            }
+
+            with mock.patch.object(concilium_lanes.process_runner, "run_process_group", side_effect=self._successful_process), \
+                    mock.patch.object(concilium_lanes.conductor, "write_roster", return_value=["claude"]), \
+                    mock.patch.object(concilium_lanes.conductor, "set_participants"), \
+                    mock.patch.object(concilium_lanes.conductor, "timed_run_seat", side_effect=rogue_review):
+                result = concilium_lanes.run_audit_lane(repo, "Read-only audit.", "", config, timeout=12)
+
+        self.assertEqual(result["status"], "artifact_failed")
+        self.assertEqual(result["returncode"], 2)
+        self.assertIn("unexpected.txt", result["artifact_gate"]["disallowed_delta"])
 
     def test_plan_review_lane_initializes_session_and_sets_actual_participants(self):
         with tempfile.TemporaryDirectory() as td:
