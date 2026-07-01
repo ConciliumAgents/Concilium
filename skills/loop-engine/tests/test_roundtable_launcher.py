@@ -149,7 +149,7 @@ class RoundtableLauncherTests(unittest.TestCase):
             env["CONCILIUM_LEGACY_VENV_PY"] = str(venv_stub)
             env["CAPTURE_ARGV"] = str(capture)
 
-            subprocess.run(
+            proc = subprocess.run(
                 [str(LAUNCHER), "legacy", "--repo", td, "--task", "legacy smoke"],
                 text=True,
                 capture_output=True,
@@ -157,6 +157,8 @@ class RoundtableLauncherTests(unittest.TestCase):
                 check=True,
             )
 
+            self.assertIn("deprecated", proc.stderr.lower())
+            self.assertIn("legacy", proc.stderr.lower())
             argv = json.loads(capture.read_text(encoding="utf-8"))
             self.assertIn("conductor.py", " ".join(argv))
 

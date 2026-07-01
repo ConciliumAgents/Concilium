@@ -20,6 +20,8 @@ The tiny live Fast smoke was intentionally guard-skipped, not force-confirmed: t
 
 ## Evidence
 
+Current post-closeout unit count is higher than the original Phase 4 closeout table because later dogfood fixes added tests. Treat the table below as Phase 4 closeout evidence, not the current total test count.
+
 | Check | Result | Evidence |
 |---|---|---|
 | Unit suite | PASS: `Ran 145 tests OK` | `python3 -m unittest discover -s skills/loop-engine/tests` |

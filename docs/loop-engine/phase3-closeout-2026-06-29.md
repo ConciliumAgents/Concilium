@@ -1,5 +1,7 @@
 # Concilium Phase 3 Closeout
 
+> Historical note: Phase 3 is superseded by the Phase 4 runtime/service contract. Keep this document as dated evidence, not as the current entrypoint contract.
+
 ## Conclusion
 
 Phase 3 is complete. Concilium now has a tested local path for layered configuration, capacity status, preflight, pure lane routing, routed dry/live execution, benchmark visibility, WebUI preflight, and smoke coverage.

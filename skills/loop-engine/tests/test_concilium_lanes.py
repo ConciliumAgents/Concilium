@@ -55,9 +55,34 @@ class ConciliumLanesTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td, mock.patch.object(concilium_lanes.conductor, "run", return_value=0) as run:
             result = concilium_lanes.run_roundtable_lane(td, "Design the adapter.", "true", config, timeout=12)
 
-        self.assertEqual(result, {"status": "ran", "lane": "roundtable", "returncode": 0})
+        self.assertEqual(result["status"], "ran")
+        self.assertEqual(result["lane"], "roundtable")
+        self.assertEqual(result["returncode"], 0)
+        self.assertTrue(result["session_path"])
         run.assert_called_once()
         self.assertEqual(run.call_args.kwargs["seat_models"], config["seat_models"])
+
+    def test_roundtable_lane_returns_runtime_session_path(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo = pathlib.Path(td).resolve()
+            captured = {}
+
+            def fake_run(repo_arg, task_arg, **kwargs):
+                del repo_arg, task_arg, kwargs
+                captured["session"] = os.environ.get("LOOP_SESSION", "")
+                return 0
+
+            with mock.patch.object(concilium_lanes.conductor, "run", side_effect=fake_run):
+                result = concilium_lanes.run_roundtable_lane(
+                    repo,
+                    "Complex task.",
+                    "",
+                    {"lanes": {"roundtable": {"seats": ["claude", "hermes", "kimi"], "max_iters": 2}}},
+                    timeout=30,
+                )
+
+        self.assertTrue(captured["session"].startswith("roundtable-"))
+        self.assertEqual(result["session_path"], str(repo / ".roundtable" / "sessions" / captured["session"]))
 
     def test_fast_lane_roster_write_uses_fast_session_and_restores_environment(self):
         captured_env = {}

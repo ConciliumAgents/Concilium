@@ -11,7 +11,7 @@ description: "Run an Addy-Osmani-style Loop Engineering round table from Claude 
 
 ## 两种用法
 - **主持模式（本文件）**：你在对话里逐步驱动 plan→act→verify，用 `bin/seat-*.sh` 调座位；会改坏东西的大块核心代码**由你在主对话里亲写**（握全上下文、无超时）。
-- **自动模式**：`bin/conductor.py --repo <repo> --task "<任务+验收标准>"` 一条命令全自动跑完整循环（总指挥 plan → 飞毛腿 exec → reviewer 验证 → 迭代到 PASS）。claude 退 headless exec、reviewer 自动解析、降级容错、按座位画像派活都在此模式（细节见上述 spec）。其他项目里走 CLI（见 `~/.claude/CLAUDE.md` 圆桌速查）。
+- **自动模式**：默认走 `roundtable --task "<任务+验收标准>"` 或底层 `bin/concilium-run.py --repo <repo> --task "<任务+验收标准>" --live`。这一路径会先进入 Concilium runtime：lane routing、Budget Guard、seat provenance、artifact gate 与事件模型都在这里生效。`bin/conductor.py` 只作为 legacy/底层调试入口保留，不应作为产品默认路径。
 
 ## 铁律（先读，违反则整套失效）
 

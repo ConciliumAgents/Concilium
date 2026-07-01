@@ -37,6 +37,7 @@ print_launcher_info() {
 }
 
 run_legacy() {
+  echo "[roundtable] legacy mode is deprecated; use the default Concilium runtime unless you are explicitly testing old conductor/TUI behavior." >&2
   LEGACY_VENV_PY="${CONCILIUM_LEGACY_VENV_PY:-$VENV_PY}"
   if [ -x "$LEGACY_VENV_PY" ] && "$LEGACY_VENV_PY" -c 'import rich' >/dev/null 2>&1; then
     exec "$LEGACY_VENV_PY" "$SKILL/tui/tui.py" ${ARGS[@]+"${ARGS[@]}"}

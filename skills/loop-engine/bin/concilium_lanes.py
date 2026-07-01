@@ -464,10 +464,14 @@ def run_roundtable_lane(
     timeout: int,
     reporter=None,
 ) -> dict:
+    repo_path = Path(repo).expanduser().resolve()
     roundtable = config.get("lanes", {}).get("roundtable", {})
-    with _scoped_env(_seat_timeout_env(timeout, config)):
+    env = _lane_env("roundtable", task, timeout, config)
+    scoped = {key: env[key] for key in ("LOOP_SESSION", "LOOP_ARCHIVE")}
+    scoped.update(_seat_timeout_env(timeout, config))
+    with _scoped_env(scoped):
         rc = conductor.run(
-            str(Path(repo).expanduser().resolve()),
+            str(repo_path),
             task,
             commander=roundtable.get("commander", "claude"),
             reviewer=roundtable.get("reviewer", ""),
@@ -477,4 +481,9 @@ def run_roundtable_lane(
             seats=roundtable.get("seats") or None,
             seat_models=config.get("seat_models", {}),
         )
-    return {"status": "ran", "lane": "roundtable", "returncode": rc}
+    return {
+        "status": "ran",
+        "lane": "roundtable",
+        "returncode": rc,
+        "session_path": str(repo_path / ".roundtable" / "sessions" / env["LOOP_SESSION"]),
+    }

@@ -354,11 +354,70 @@ class BenchmarkRoundtableTests(unittest.TestCase):
             self.assertTrue((lane_dir / "result.json").is_file())
             self.assertTrue((lane_dir / "report.md").is_file())
 
-    def test_roundtable_env_disables_archive_for_benchmark(self):
-        env = benchmark.roundtable_env(timeout=123, session="phase2-sample")
-        self.assertEqual(env["LOOP_SESSION"], "phase2-sample")
-        self.assertEqual(env["LOOP_SEAT_TIMEOUT"], "123")
-        self.assertEqual(env["LOOP_ARCHIVE"], "0")
+    def test_run_roundtable_lane_uses_concilium_runtime_product_path(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo = pathlib.Path(td) / "repo"
+            lane_dir = pathlib.Path(td) / "lane"
+            repo.mkdir()
+            subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.DEVNULL)
+            (repo / "docs").mkdir()
+            (repo / "docs" / "example.md").write_text("base\n", encoding="utf-8")
+            subprocess.run(["git", "add", "docs/example.md"], cwd=repo, check=True)
+            subprocess.run(
+                ["git", "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "base"],
+                cwd=repo,
+                check=True,
+                stdout=subprocess.DEVNULL,
+            )
+            base = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+
+            def fake_run_concilium(repo_arg, task_arg, **kwargs):
+                self.assertEqual(pathlib.Path(repo_arg), repo)
+                self.assertEqual(task_arg, sample_task()["prompt"])
+                self.assertEqual(kwargs["signals"]["risk"], "high")
+                self.assertGreaterEqual(kwargs["signals"]["file_count"], 4)
+                self.assertTrue(kwargs["signals"]["ambiguous"])
+                self.assertEqual(kwargs["timeout"], 120)
+                (repo / "docs" / "example.md").write_text("base\nchanged\n", encoding="utf-8")
+                session_path = repo / ".roundtable" / "sessions" / "runtime-session"
+                (session_path / "KB").mkdir(parents=True)
+                (session_path / "minutes").mkdir()
+                (session_path / "KB" / "task.md").write_text(sample_task()["prompt"], encoding="utf-8")
+                (session_path / "KB" / "conclusion.md").write_text("runtime report source\n", encoding="utf-8")
+                (session_path / "KB" / "test-results.txt").write_text("ok\n", encoding="utf-8")
+                (session_path / "roundtable.json").write_text(
+                    json.dumps({"participants": ["claude", "hermes", "kimi"], "iter": 1}),
+                    encoding="utf-8",
+                )
+                return {"status": "ran", "lane": "roundtable", "returncode": 0, "session_path": str(session_path)}
+
+            real_subprocess_run = subprocess.run
+
+            def guarded_run(args, *run_args, **run_kwargs):
+                if "conductor.py" in " ".join(str(part) for part in args):
+                    raise AssertionError("benchmark roundtable lane must not call conductor.py directly")
+                return real_subprocess_run(args, *run_args, **run_kwargs)
+
+            with mock.patch.object(benchmark.concilium_run, "run_concilium", side_effect=fake_run_concilium), \
+                    mock.patch.object(benchmark.subprocess, "run", side_effect=guarded_run) as run:
+                record = benchmark.run_roundtable_lane(
+                    sample_task(),
+                    repo,
+                    lane_dir,
+                    timeout=30,
+                    harness_commit="harness",
+                    task_base_commit=base,
+                )
+
+            conductor_calls = [
+                call for call in run.call_args_list
+                if "conductor.py" in " ".join(str(part) for part in call.args[0])
+            ]
+            self.assertEqual(conductor_calls, [])
+            self.assertEqual(record["lane"], "roundtable")
+            self.assertEqual(record["status"], "PASS")
+            self.assertTrue((lane_dir / "report.md").is_file())
+            self.assertIn("Roundtable Session Report: runtime-session", (lane_dir / "report.md").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

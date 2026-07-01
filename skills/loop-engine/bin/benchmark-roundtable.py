@@ -234,14 +234,6 @@ def path_violations(task: dict, files: list[str]) -> list[str]:
     return classify_changed_files(task, files)["violations"]
 
 
-def roundtable_env(timeout: int, session: str) -> dict:
-    env = dict(os.environ)
-    env["LOOP_SESSION"] = session
-    env["LOOP_SEAT_TIMEOUT"] = str(timeout)
-    env["LOOP_ARCHIVE"] = "0"
-    return env
-
-
 def cleanup_kimi_session(output: str) -> None:
     matches = re.findall(r"session_[0-9a-f-]{30,}", output, flags=re.I)
     if not matches:
@@ -437,52 +429,50 @@ def run_roundtable_lane(
     task_base_commit: str,
 ) -> dict:
     started = time.time()
-    session = f"phase2-{task['id']}"
-    env = roundtable_env(timeout, session)
     test_cmd = " && ".join(task["verify_cmds"])
-    cmd = [
-        "python3",
-        str(ROOT / "skills" / "loop-engine" / "bin" / "conductor.py"),
-        "--repo",
-        str(lane_repo),
-        "--task",
-        task["prompt"],
-        "--test-cmd",
-        test_cmd,
-        "--max-iters",
-        "2",
-        "--seats",
-        "claude,hermes,kimi",
-    ]
+    result = {}
     try:
-        proc = subprocess.run(
-            cmd,
-            cwd=ROOT,
-            env=env,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
+        result = concilium_run.run_concilium(
+            lane_repo,
+            task["prompt"],
+            test_cmd=test_cmd,
+            dry_run=False,
+            print_route=False,
+            signals={
+                "risk": "high",
+                "file_count": max(4, len(task.get("allowed_paths") or [])),
+                "security_sensitive": False,
+                "ambiguous": True,
+            },
             timeout=timeout * 4,
+            seats=["claude", "hermes", "kimi"],
+            commander="claude",
+            max_iters=2,
         )
-        rc, out = proc.returncode, proc.stdout or ""
-    except subprocess.TimeoutExpired as e:
-        out = (e.stdout or "") if isinstance(e.stdout, str) else ""
-        rc = 124
+        rc = int(result.get("returncode", 0))
+        out = json.dumps(result, ensure_ascii=False, indent=2)
+    except Exception as e:
+        out = f"{type(e).__name__}: {e}"
+        rc = 1
     verify = run_verify_cmds(lane_repo, task["verify_cmds"], timeout=timeout)
-    session_path = lane_repo / ".roundtable" / "sessions" / session
-    report_path = session_path / "KB" / "report.md"
-    run_cmd(
-        [
-            "python3",
-            str(ROOT / "skills" / "loop-engine" / "bin" / "report-session.py"),
-            str(session_path),
-            "--out",
-            str(report_path),
-        ],
-        ROOT,
-        timeout=60,
-    )
-    report_text = report_path.read_text(encoding="utf-8", errors="replace") if report_path.exists() else out[-4000:]
+    raw_session_path = str(result.get("session_path") or "").strip()
+    if raw_session_path:
+        session_path = Path(raw_session_path)
+        report_path = session_path / "KB" / "report.md"
+        run_cmd(
+            [
+                "python3",
+                str(ROOT / "skills" / "loop-engine" / "bin" / "report-session.py"),
+                str(session_path),
+                "--out",
+                str(report_path),
+            ],
+            ROOT,
+            timeout=60,
+        )
+        report_text = report_path.read_text(encoding="utf-8", errors="replace") if report_path.exists() else out[-4000:]
+    else:
+        report_text = out[-4000:]
     write_text(lane_dir / "report.md", report_text)
     write_text(lane_dir / "diff.patch", diff_patch_since(lane_repo, task_base_commit))
     write_text(lane_dir / "test-results.txt", json.dumps(verify, ensure_ascii=False, indent=2))

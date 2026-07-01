@@ -10,6 +10,9 @@ import sys
 from collections import deque
 from pathlib import Path
 
+# Deprecated product path: this TUI drives legacy conductor behavior directly.
+# Phase 5 clients should use concilium-run.py / web/server.py service contracts.
+
 # 让 tui 能 import 同仓 bin/conductor.py
 BIN = Path(__file__).resolve().parent.parent / "bin"
 sys.path.insert(0, str(BIN))
