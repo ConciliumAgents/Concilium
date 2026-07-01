@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# roundtable — 圆桌一键启动器
-#   用法: roundtable --task "<任务>" [--repo <仓库,默认当前目录>] [--commander claude|codex|hermes]
-#                    [--reviewer codex|claude|hermes] [--max-iters N] [--test-cmd "<测试命令>"]
-#   有 .venv+rich → 开 TUI 仪表盘；否则退回纯文本指挥程序。
+# roundtable — Concilium one-shot launcher
+#   用法: roundtable --task "<任务>" [--repo <仓库,默认当前目录>] [--test-cmd "<测试命令>"]
+#        roundtable service [--port N] [--open|--no-open] [--token-file PATH]
+#        roundtable legacy --task "<任务>" [legacy conductor/TUI options]
 #   先探座位: roundtable --doctor
 #   查看入口版本: roundtable --version
 set -euo pipefail
@@ -51,10 +51,15 @@ run_legacy() {
 if [ "$#" -eq 0 ]; then usage; exit 0; fi
 case "${1:-}" in -h|--help) usage; exit 0;; esac
 
-# web：启动 WebUI（推荐——比终端友好）
-if [ "${1:-}" = "web" ] || [ "${1:-}" = "--web" ]; then
+# service：启动本地 Concilium API；浏览器 Debug Console 仅作调试，不是 Phase 5 产品 UI。
+if [ "${1:-}" = "service" ] || [ "${1:-}" = "serve" ] || [ "${1:-}" = "web" ] || [ "${1:-}" = "--web" ]; then
+  cmd="${1:-}"
   shift
-  exec python3 "$SKILL/web/server.py" ${@+"$@"}
+  if [ "$cmd" = "web" ] || [ "$cmd" = "--web" ]; then
+    echo "[roundtable] 'web' is deprecated; use 'service' for the local Concilium API / Debug Console." >&2
+  fi
+  PY="${CONCILIUM_LAUNCHER_PYTHON:-python3}"
+  exec "$PY" "$SKILL/web/server.py" ${@+"$@"}
 fi
 
 # --version：只看入口版本/路径，不开会

@@ -349,19 +349,28 @@ class Handler(BaseHTTPRequestHandler):
         return self._send(200, json.dumps({"run_id": run_id}).encode("utf-8"))
 
 
-def main():
+def build_arg_parser():
     import argparse
-    ap = argparse.ArgumentParser()
+
+    ap = argparse.ArgumentParser(description="Run the local Concilium service.")
     ap.add_argument("--port", type=int, default=8765)
-    ap.add_argument("--no-open", action="store_true")
+    ap.add_argument("--open", action="store_true", dest="open_browser")
+    ap.add_argument("--no-open", action="store_false", dest="open_browser")
+    ap.set_defaults(open_browser=False)
     ap.add_argument("--token-file", default="")
-    a = ap.parse_args()
+    return ap
+
+
+def main(argv=None):
+    ap = build_arg_parser()
+    a = ap.parse_args(argv)
     srv = ThreadingHTTPServer(("127.0.0.1", a.port), Handler)
     url = f"http://127.0.0.1:{a.port}/"
     if a.token_file:
         write_token_file(Path(a.token_file).expanduser(), url, TOKEN)
-    print(f"圆桌 WebUI: {url}  (Ctrl+C 退出)", flush=True)
-    if not a.no_open:
+    print(f"Concilium local service: {url}  (Ctrl+C to stop)", flush=True)
+    print("Debug Console is available at the service URL; it is not the Phase 5 product UI.", flush=True)
+    if a.open_browser:
         try: webbrowser.open(url)
         except Exception: pass
     try:

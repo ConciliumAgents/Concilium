@@ -26,6 +26,17 @@ def drain(q: "queue.Queue") -> list[dict]:
 
 
 class WebRuntimeAdapterTests(unittest.TestCase):
+    def test_service_parser_defaults_to_no_browser_open(self):
+        parser = web_server.build_arg_parser()
+
+        default_args = parser.parse_args([])
+        open_args = parser.parse_args(["--open"])
+        no_open_args = parser.parse_args(["--no-open"])
+
+        self.assertFalse(default_args.open_browser)
+        self.assertTrue(open_args.open_browser)
+        self.assertFalse(no_open_args.open_browser)
+
     def test_preflight_forces_preview_and_run_preserves_explicit_stub_mode(self):
         payload = {
             "repo": ".",
