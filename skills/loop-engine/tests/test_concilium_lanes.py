@@ -79,6 +79,13 @@ class ConciliumLanesTests(unittest.TestCase):
             self.assertNotIn("LOOP_ARCHIVE", os.environ)
 
         self.assertEqual(result["status"], "ran")
+        self.assertEqual(result["seat_results"], [{
+            "seat": "kimi",
+            "mode": "exec",
+            "backend_type": "external_cli",
+            "status": "invoked",
+            "rc": 0,
+        }])
         self.assertTrue(captured_env["LOOP_SESSION"].startswith("fast-"))
         self.assertEqual(captured_env["LOOP_SEAT_TIMEOUT"], "12")
         self.assertEqual(captured_env["LOOP_ARCHIVE"], "0")

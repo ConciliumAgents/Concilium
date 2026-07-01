@@ -73,6 +73,23 @@ class ReviewLaneTests(unittest.TestCase):
         self.assertEqual(result["agent_calls"], 2)
         self.assertEqual([(seat, mode) for seat, mode, _ in calls], [("kimi", "exec"), ("hermes", "review")])
         set_iteration.assert_called_once()
+        self.assertEqual(result["seat_results"], [
+            {
+                "seat": "kimi",
+                "mode": "exec",
+                "backend_type": "external_cli",
+                "status": "invoked",
+                "rc": 0,
+            },
+            {
+                "seat": "hermes",
+                "mode": "review",
+                "backend_type": "external_cli",
+                "status": "invoked",
+                "rc": 0,
+                "verdict": "PASS",
+            },
+        ])
 
     def test_init_session_overwrites_default_participants_with_lane_seats(self):
         def fake_run_cmd(args, cwd, env, timeout):

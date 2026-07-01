@@ -148,11 +148,19 @@ def run_fast_lane(
         )
         verify_rc, verify_out = _run_shell(test_cmd, repo_path, timeout)
         agent_rc = int(proc["returncode"])
+        seat_result = {
+            "seat": agent,
+            "mode": "exec",
+            "backend_type": "external_cli",
+            "status": "invoked",
+            "rc": agent_rc,
+        }
         return {
             "status": "ran",
             "lane": "fast",
             "agent": agent,
             "returncode": agent_rc if agent_rc != 0 else verify_rc,
+            "seat_results": [seat_result],
             "agent_output": str(proc["output"])[-4000:],
             "verify": {"returncode": verify_rc, "output": verify_out[-4000:]},
         }
