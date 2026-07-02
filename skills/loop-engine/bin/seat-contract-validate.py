@@ -58,13 +58,13 @@ def validate_plan(text: str) -> list[str]:
 
 def validate_exec(text: str) -> list[str]:
     errors = []
-    lessons = extract_h2_section(text, "## 教训")
+    lessons = extract_h2_section(text, "## Lessons")
     if not lessons:
-        errors.append("exec output must include ## 教训")
-    if "### 通用" not in lessons:
-        errors.append("exec output must include ### 通用")
+        errors.append("exec output must include ## Lessons")
+    if "### General" not in lessons:
+        errors.append("exec output must include ### General")
     subsections = [m.group(1).strip() for m in re.finditer(r"^###\s+(.+?)\s*$", lessons, re.M)]
-    if not any(section != "通用" for section in subsections):
+    if not any(section != "General" for section in subsections):
         errors.append("exec output must include a project lesson subsection")
     return errors
 

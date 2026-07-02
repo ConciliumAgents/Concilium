@@ -18,9 +18,9 @@ ROUNDTABLE_TERMS = {
     "high-impact",
     "business decision",
 }
-AUDIT_TERMS = {"audit", "review", "审查", "审计"}
-READ_ONLY_TERMS = {"read-only", "readonly", "只读", "不要修改", "不得修改", "only write", "只允许新增"}
-PLAN_REVIEW_TERMS = {"execution plan", "implementation plan", "执行方案", "实施方案", "计划审查", "审核方案"}
+AUDIT_TERMS = {"audit", "review", "inspect"}
+READ_ONLY_TERMS = {"read-only", "readonly", "do not modify", "do not edit", "no changes"}
+PLAN_REVIEW_TERMS = {"execution plan", "implementation plan", "plan review", "review the plan"}
 DOC_ONLY_RE = re.compile(r"\b(?:docs?|markdown|readme|typo)\b", re.I)
 
 

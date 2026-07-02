@@ -241,9 +241,9 @@ class ConductorCoreTests(unittest.TestCase):
 
         self.assertEqual(rc, 0)
         self.assertEqual(len(plan_briefs), 1)
-        self.assertIn("执行池: kimi", plan_briefs[0])
-        self.assertIn("验证席: hermes", plan_briefs[0])
-        self.assertIn("不要输出只读复审子任务", plan_briefs[0])
+        self.assertIn("Executor pool: kimi", plan_briefs[0])
+        self.assertIn("Reviewer: hermes", plan_briefs[0])
+        self.assertIn("Do not output read-only review subtasks", plan_briefs[0])
         self.assertIn(("verdict", "hermes", "PASS"), reporter.events)
 
     def test_run_records_seat_timings_in_roundtable_state(self):

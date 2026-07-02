@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# roundtable-init.sh — 在目标仓库初始化圆桌会议桌 .roundtable/
-# 用法: roundtable-init.sh <repo> "<task 描述>"
+# roundtable-init.sh - Initialize a Concilium table in the target repository .roundtable/
+# Usage: roundtable-init.sh <repo> "<task description>"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=_lib.sh
 source "$SCRIPT_DIR/_lib.sh"
 
 REPO="$(loop_resolve_repo "${1:-}")"
 TASK="${2:-}"
-TABLE="$(loop_table_dir "$REPO")"     # 本会话目录 .roundtable/sessions/<id>/
+TABLE="$(loop_table_dir "$REPO")"     # Current session directory: .roundtable/sessions/<id>/
 TPL="$SCRIPT_DIR/../templates"
 
-# 会话级隔离：记 current 指针 + 维护会话索引（供 WebUI 翻历史）
+# Session-level isolation: record current pointer and maintain session index for Web UI history.
 ROOT="$(loop_root "$REPO")"
 SID="${LOOP_SESSION:-default}"
 printf '%s' "$SID" > "$ROOT/current"
@@ -28,20 +28,20 @@ if not any(e.get("id") == sid for e in d):
 PY
 fi
 
-# KB 模板（已存在则不覆盖，保护你已写的内容）
+# KB templates: preserve existing content.
 [ -f "$TABLE/KB/project.md" ] || cp "$TPL/project.md" "$TABLE/KB/project.md"
 [ -f "$TABLE/KB/task.md" ]    || cp "$TPL/task.md"    "$TABLE/KB/task.md"
 [ -f "$TABLE/KB/state.md" ]   || cp "$TPL/state.md"   "$TABLE/KB/state.md"
 [ -f "$TABLE/KB/roster.md" ]  || cp "$TPL/roster.md"  "$TABLE/KB/roster.md"
-[ -f "$TABLE/KB/diff.patch" ] || echo "（尚未刷新；运行 kb-refresh.sh）" > "$TABLE/KB/diff.patch"
-[ -f "$TABLE/KB/test-results.txt" ] || echo "（尚未运行测试）" > "$TABLE/KB/test-results.txt"
+[ -f "$TABLE/KB/diff.patch" ] || echo "(Not refreshed yet; run kb-refresh.sh)" > "$TABLE/KB/diff.patch"
+[ -f "$TABLE/KB/test-results.txt" ] || echo "(Tests have not run yet)" > "$TABLE/KB/test-results.txt"
 
-# 写入本次任务
+# Write this run's task.
 if [ -n "$TASK" ]; then
-  printf '\n## 本次任务（init 写入）\n\n%s\n' "$TASK" >> "$TABLE/KB/task.md"
+  printf '\n## Task (written by init)\n\n%s\n' "$TASK" >> "$TABLE/KB/task.md"
 fi
 
-# 机读状态
+# Machine-readable state.
 if [ ! -f "$TABLE/roundtable.json" ]; then
   cat > "$TABLE/roundtable.json" <<'JSON'
 {
@@ -53,14 +53,14 @@ if [ ! -f "$TABLE/roundtable.json" ]; then
 JSON
 fi
 
-# 让会议桌不污染目标仓库：用本地 exclude（不改任何被跟踪文件，非侵入）
+# Keep the table out of target-repo commits by using local exclude.
 EXCL="$REPO/.git/info/exclude"
 if [ -f "$EXCL" ] && ! grep -qxF "$LOOP_TABLE_DIRNAME/" "$EXCL" 2>/dev/null; then
   printf '%s/\n' "$LOOP_TABLE_DIRNAME" >> "$EXCL"
-  loop_log "已把 $LOOP_TABLE_DIRNAME/ 加入 .git/info/exclude（不进你的提交）"
+  loop_log "added $LOOP_TABLE_DIRNAME/ to .git/info/exclude (not included in commits)"
 fi
 
-# loop 分支（仅当仓库已有提交时；init 不自动切，避免打断你当前工作）
+# Loop branch suggestion only when the repository has commits; do not switch automatically.
 if git -C "$REPO" rev-parse HEAD >/dev/null 2>&1; then
   slug="$(printf '%s' "${TASK:-task}" | tr ' ' '-' | tr -cd '[:alnum:]-' | cut -c1-30)"
   [ -n "$slug" ] || slug="task"
@@ -68,8 +68,8 @@ if git -C "$REPO" rev-parse HEAD >/dev/null 2>&1; then
   if ! git -C "$REPO" rev-parse --verify "$br" >/dev/null 2>&1; then
     git -C "$REPO" branch "$br" >/dev/null 2>&1 || true
   fi
-  loop_log "建议在隔离分支工作: ${br} (手动 git -C '${REPO}' switch ${br} 切入)"
+  loop_log "Suggested isolated branch: ${br} (manual: git -C '${REPO}' switch ${br})"
 fi
 
-loop_log "圆桌会议桌已就绪: $TABLE"
-loop_log "下一步: 填好 KB/project.md 与 KB/task.md，再开始 plan→act→verify 循环"
+loop_log "Concilium table is ready: $TABLE"
+loop_log "Next step: Fill KB/project.md and KB/task.md, then start the plan-act-verify loop"

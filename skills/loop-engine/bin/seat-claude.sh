@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-# seat-claude.sh — 请 Claude Code（Opus，原生壳）以 headless 方式入席圆桌
-# Claude 在这里是与 codex/hermes 平级的"一个座位"，由独立指挥程序调用，从黑板自取上下文。
-# 用法: seat-claude.sh <repo> plan|exec|review "<brief>"
-#   plan  : 充当"项目总指挥"——读 KB+花名册，输出 JSON 派活计划（只读，不改文件）
-#   exec  : 执行席——实施子任务（acceptEdits 自动接受文件改动）
-#   review: 验证席——只读评审，出 VERDICT
+# seat-claude.sh - Run Claude Code as a native Concilium seat.
+# Usage: seat-claude.sh <repo> plan|exec|review "<brief>"
+#   plan  : project commander; reads KB + roster and emits a JSON assignment plan.
+#   exec  : executor; implements a subtask with acceptEdits enabled.
+#   review: reviewer; read-only review and final VERDICT.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=_lib.sh
 source "${SCRIPT_DIR}/_lib.sh"
@@ -17,14 +16,12 @@ TABLE="$(loop_table_dir "${REPO}")"
 ITER="$(loop_iter "${REPO}")"
 PRE="$(loop_seat_preamble "${REPO}")"
 
-# 可选模型覆盖（默认用会话/配置的 Opus）
 CL_OPTS=(--add-dir "${REPO}")
 CL_MODEL="${LOOP_SEAT_MODEL:-${LOOP_CLAUDE_MODEL:-}}"
 [ -n "${CL_MODEL}" ] && CL_OPTS+=(--model "${CL_MODEL}")
 
-# 跨目录只读盘点：LOOP_ADD_DIRS（空格分隔的绝对路径）仅在【只读模式 plan/review】接入 --add-dir。
-# 红线（实测固化）：acceptEdits（exec 写模式）+ --add-dir 能写到仓外目录 → 故 exec 绝不接入 LOOP_ADD_DIRS，
-# 跨目录一律走 plan 模式（物理只读，写操作被模式拦截），保证座位无法改动 ~/.claude 等仓外文件。
+# LOOP_ADD_DIRS is allowed only for read-only plan/review mode. acceptEdits plus
+# --add-dir can write outside the repository, so exec never receives extra dirs.
 RO_DIRS=()
 if [ -n "${LOOP_ADD_DIRS:-}" ]; then
   for _d in ${LOOP_ADD_DIRS}; do
@@ -37,17 +34,17 @@ case "${MODE}" in
     OUT="${TABLE}/minutes/iter-${ITER}-claude-plan.md"
     INSTR="${PRE}
 
-你的角色：**项目总指挥**。请阅读 KB/task.md、KB/project.md、KB/roster.md（各 agent 的出厂特长 **+ 实战画像/适合/坑——据实战画像选席派活**）与仓库，
-把本任务拆成若干子任务，并**按每个 agent 的特长**分派。可用座位：claude、codex、hermes、kimi。
-原则：**执行一律优先派 hermes/kimi（飞毛腿，快）；claude、codex 只指挥/验证、不执行**（claude 揽 exec 会超时空转）。
-${BRIEF:+补充：${BRIEF}}
+Your role: project commander. Read KB/task.md, KB/project.md, KB/roster.md, and the repository. Break the task into implementation subtasks and assign them according to each agent's strengths and operational profile.
+Available seats: claude, codex, hermes, kimi.
+Principle: prefer hermes and kimi for execution because they are faster executor seats. Claude and Codex should plan or review only; do not assign implementation work to them.
+${BRIEF:+Additional context: ${BRIEF}}
 
-**输出要求**：先简述思路，最后用一个 \`\`\`json 代码块输出派活计划，形如：
-\`\`\`json
-[{\"agent\":\"hermes\",\"subtask\":\"……\"},{\"agent\":\"kimi\",\"subtask\":\"……\"}]
-\`\`\`
-只在该 JSON 块里放计划，agent 字段必须是 claude/codex/hermes/kimi 之一；执行子任务请只派 hermes/kimi。"
-    loop_log "Claude 总指挥席入席 iter=${ITER}（plan，只读）"
+Output requirements: briefly summarize the plan, then end with exactly one fenced json block shaped like:
+```json
+[{\"agent\":\"hermes\",\"subtask\":\"...\"},{\"agent\":\"kimi\",\"subtask\":\"...\"}]
+```
+Only put the assignment plan in that JSON block. The agent field must be one of claude, codex, hermes, or kimi. Assign implementation subtasks only to hermes or kimi."
+    loop_log "claude commander seat starting iter=${ITER} (plan, read-only)"
     RAW="${OUT}.tmp"
     set +e
     ( cd "${REPO}" && claude -p "${INSTR}" "${CL_OPTS[@]}" ${RO_DIRS[@]+"${RO_DIRS[@]}"} --permission-mode plan ) >"${RAW}" 2>&1
@@ -56,26 +53,26 @@ ${BRIEF:+补充：${BRIEF}}
     loop_publish_minutes "${RAW}" "${OUT}"
     rm -f "${RAW}"
     cat "${OUT}"
-    loop_log "claude 退出码=${rc}，纪要: ${OUT}"
+    loop_log "claude exit code=${rc}; minutes: ${OUT}"
     exit "${rc}"
     ;;
   exec)
-    [ -n "${BRIEF}" ] || loop_die "exec 模式需要第三个参数：子任务 brief"
+    [ -n "${BRIEF}" ] || loop_die "exec mode requires a third argument: subtask brief"
     OUT="${TABLE}/minutes/iter-${ITER}-claude-exec.md"
     INSTR="${PRE}
 
-你的角色：**执行席**。请完成下述子任务，直接在仓库里实施改动（干净、符合现有风格）。
-完成后在 KB/state.md 简述你做了什么。删除/不可逆/对外/花钱类操作不要做，留给人工。
-子任务：${BRIEF}
+Your role: executor. Complete the subtask below and modify the repository directly. Keep the implementation clean and consistent with the existing style.
+After finishing, summarize what you changed in KB/state.md. Do not perform deletion, irreversible, external, or paid actions; leave those to the operator.
+Subtask: ${BRIEF}
 
-**完成后请在纪要末尾另起一节，写入：**
-## 教训
-### 通用
-- （本次值得归档的通用协作/流程教训，一条一行；无则写\"（无）\"）
-### <项目名>
-- （本次项目专属教训；无则写\"（无）\"）
+At the end of the minutes, add a section exactly like this:
+## Lessons
+### General
+- General collaboration or process lessons worth archiving, one per line; otherwise write \"None.\"
+### <project>
+- Project-specific lessons; otherwise write \"None.\"
 "
-    loop_log "Claude 执行席入席 iter=${ITER}（exec, acceptEdits）"
+    loop_log "claude executor seat starting iter=${ITER} (exec, acceptEdits)"
     RAW="${OUT}.tmp"
     set +e
     ( cd "${REPO}" && claude -p "${INSTR}" "${CL_OPTS[@]}" --permission-mode acceptEdits ) >"${RAW}" 2>&1
@@ -84,19 +81,19 @@ ${BRIEF:+补充：${BRIEF}}
     loop_publish_minutes "${RAW}" "${OUT}"
     rm -f "${RAW}"
     cat "${OUT}"
-    loop_log "claude 退出码=${rc}，纪要: ${OUT}"
+    loop_log "claude exit code=${rc}; minutes: ${OUT}"
     exit "${rc}"
     ;;
   review)
     OUT="${TABLE}/minutes/iter-${ITER}-claude-review.md"
     INSTR="${PRE}
 
-你的角色：**验证席**（只读）。审查本轮未提交改动的正确性/安全性/是否满足验收标准。
-按严重度标注：[CRITICAL]/[HIGH]/[MEDIUM]/[LOW]。
-若 BRIEF 标明有座位失败/子任务未执行，请据**任务完整性是否受损**裁决：任务已由其余座位完成则不应因个别失败机械 BLOCK。
-${BRIEF:+额外关注：${BRIEF}}
-**最后单独成行输出**：无 HIGH/CRITICAL → VERDICT: PASS；否则 → VERDICT: BLOCK"
-    loop_log "Claude 验证席入席 iter=${ITER}（review，只读）"
+Your role: reviewer. Read-only: do not modify files and do not run commands with side effects. Review the current uncommitted changes for correctness, safety, acceptance criteria coverage, and regressions.
+Label findings by severity: [CRITICAL], [HIGH], [MEDIUM], or [LOW].
+If the brief mentions seat failures or skipped subtasks, judge whether task completeness was harmed; do not mechanically BLOCK if other seats completed the task.
+${BRIEF:+Additional focus: ${BRIEF}}
+End with one standalone line: VERDICT: PASS if there are no HIGH or CRITICAL findings; otherwise VERDICT: BLOCK."
+    loop_log "claude reviewer seat starting iter=${ITER} (review, read-only)"
     RAW="${OUT}.tmp"
     set +e
     ( cd "${REPO}" && claude -p "${INSTR}" "${CL_OPTS[@]}" ${RO_DIRS[@]+"${RO_DIRS[@]}"} --permission-mode plan ) >"${RAW}" 2>&1
@@ -105,11 +102,11 @@ ${BRIEF:+额外关注：${BRIEF}}
     loop_publish_minutes "${RAW}" "${OUT}"
     rm -f "${RAW}"
     cat "${OUT}"
-    loop_log "claude 退出码=${rc}，纪要: ${OUT}"
-    [ "${rc}" -eq 0 ] || { loop_warn "claude 进程非零退出 rc=${rc}，判 ERR"; exit 1; }
+    loop_log "claude exit code=${rc}; minutes: ${OUT}"
+    [ "${rc}" -eq 0 ] || { loop_warn "claude process exited non-zero rc=${rc}; treating as ERR"; exit 1; }
     loop_verdict_exit "${OUT}"; exit $?
     ;;
   *)
-    loop_die "未知 MODE: ${MODE}（应为 plan|exec|review）"
+    loop_die "unknown MODE: ${MODE} (expected plan|exec|review)"
     ;;
 esac

@@ -56,7 +56,7 @@ class RoundtableLauncherTests(unittest.TestCase):
             env["CAPTURE_ARGV"] = str(capture)
 
             subprocess.run(
-                [str(LAUNCHER), "--repo", str(repo), "--task", "方案评审，只评不改。"],
+                [str(LAUNCHER), "--repo", str(repo), "--task", "Plan review only; do not modify files."],
                 text=True,
                 capture_output=True,
                 env=env,

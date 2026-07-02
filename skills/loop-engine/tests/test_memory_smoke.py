@@ -14,9 +14,9 @@ SCRIPT = ROOT / "skills" / "loop-engine" / "bin" / "smoke-roundtable-memory.sh"
 def write_roundtable_memory(repo: pathlib.Path) -> None:
     root = repo / "roundtable-memory"
     root.mkdir()
-    (root / "INDEX.md").write_text("# INDEX\n\n## temp\n- [示例](temp/example.md)\n", encoding="utf-8")
+    (root / "INDEX.md").write_text("# INDEX\n\n## temp\n- [example](temp/example.md)\n", encoding="utf-8")
     (root / "LESSONS.md").write_text(
-        "# LESSONS\n\n## 通用铁律\n- 临时通用教训\n\n## 分项目教训\n### temp\n",
+        "# LESSONS\n\n## General Rules\n- Temporary general lesson\n\n## Project-Specific Lessons\n### temp\n",
         encoding="utf-8",
     )
 
@@ -36,7 +36,7 @@ class MemorySmokeTests(unittest.TestCase):
             )
 
         self.assertEqual(result.returncode, 0, result.stdout)
-        self.assertIn("旧源不存在", result.stdout)
+        self.assertIn("legacy source missing", result.stdout)
 
 
 if __name__ == "__main__":

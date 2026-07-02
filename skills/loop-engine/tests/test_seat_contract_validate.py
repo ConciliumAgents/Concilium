@@ -28,17 +28,17 @@ class SeatContractValidateTests(unittest.TestCase):
 
     def test_exec_requires_lessons(self):
         self.assertEqual(
-            validator.validate_exec("done\n## 教训\n### 通用\n- （无）\n### agents\n- （无）"),
+            validator.validate_exec("done\n## Lessons\n### General\n- None.\n### agents\n- None."),
             [],
         )
-        self.assertIn("## 教训", validator.validate_exec("done")[0])
+        self.assertIn("## Lessons", validator.validate_exec("done")[0])
 
     def test_exec_requires_project_lesson_subsection_beyond_general(self):
-        errors = validator.validate_exec("done\n## 教训\n### 通用\n- （无）")
+        errors = validator.validate_exec("done\n## Lessons\n### General\n- None.")
         self.assertIn("project lesson subsection", errors[0])
 
     def test_exec_ignores_project_like_headings_outside_lessons(self):
-        text = "### unrelated\nnotes\n## 教训\n### 通用\n- （无）"
+        text = "### unrelated\nnotes\n## Lessons\n### General\n- None."
         errors = validator.validate_exec(text)
         self.assertIn("project lesson subsection", errors[0])
 

@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""tui.py — 圆桌的 TUI 仪表盘（Phase 2，rich.Live）。
+"""Rich TUI reporter for Concilium.
 
-它是 conductor.run() 的一个 Reporter 实现：把指挥过程渲染成实时面板
-（座位状态、当前轮次、裁决、日志）。控制流仍在 conductor，TUI 只负责画面。
-需在项目内 .venv 里跑（含 rich）：  .venv/bin/python skills/loop-engine/tui/tui.py --repo … --task …
+This implements the conductor.Reporter interface and renders seat status,
+current round, verdict, and logs. Control flow remains in conductor.py.
 """
 from __future__ import annotations
 import sys
@@ -13,7 +12,7 @@ from pathlib import Path
 # Deprecated product path: this TUI drives legacy conductor behavior directly.
 # Phase 5 clients should use concilium-run.py / web/server.py service contracts.
 
-# 让 tui 能 import 同仓 bin/conductor.py
+# Allow the TUI to import the sibling bin/conductor.py module.
 BIN = Path(__file__).resolve().parent.parent / "bin"
 sys.path.insert(0, str(BIN))
 import conductor  # noqa: E402
@@ -26,10 +25,10 @@ from rich.spinner import Spinner  # noqa: E402
 from rich.text import Text  # noqa: E402
 
 ROLE_DESC = {
-    "claude": "Opus · 编排/重构/综合",
-    "codex": "gpt-5.5 · 代码验证",
-    "hermes": "工具广度 · 可切DeepSeek",
-    "kimi": "K2.7 · 异质评审/强编码",
+    "claude": "Opus | orchestration/refactoring/synthesis",
+    "codex": "gpt-5.5 | code review",
+    "hermes": "broad tools | heterogeneous backend capable",
+    "kimi": "K2.7 | heterogeneous review/strong coding",
 }
 STATUS_STYLE = {"idle": "dim", "working": "yellow", "done": "green", "block": "red", "err": "red"}
 
@@ -40,19 +39,19 @@ class RichReporter(conductor.Reporter):
         self.info = {}
         self.round_no = 0
         self.seats = {a: {"status": "idle", "detail": "", "role": ""} for a in sorted(conductor.AGENTS)}
-        self.last_verdict = "—"
+        self.last_verdict = "-"
         self.final = ""
         self.logs: deque[str] = deque(maxlen=200)
 
-    # ---- 渲染 ----
+    # ---- Rendering ----
     def _header(self):
         i = self.info
         t = Text()
-        t.append("圆桌会议 · Loop Engine\n", style="bold cyan")
-        t.append(f"任务: {i.get('task','')}\n")
-        t.append(f"总指挥: {i.get('commander','')}   验证席: {i.get('reviewer','')}   ")
-        t.append(f"轮次: {self.round_no}/{i.get('max_iters','')}   ")
-        t.append("最近裁决: ")
+        t.append("Concilium | Loop Engine\n", style="bold cyan")
+        t.append(f"task: {i.get('task','')}\n")
+        t.append(f"commander: {i.get('commander','')}   Reviewer: {i.get('reviewer','')}   ")
+        t.append(f"round: {self.round_no}/{i.get('max_iters','')}   ")
+        t.append("latest verdict: ")
         t.append(self.last_verdict, style="bold " + ("green" if self.last_verdict == "PASS" else "red" if self.last_verdict in ("BLOCK", "ERR") else "white"))
         if self.final:
             t.append("\n" + self.final, style="bold")
@@ -60,33 +59,33 @@ class RichReporter(conductor.Reporter):
 
     def _seats(self):
         tbl = Table(expand=True, show_edge=False)
-        tbl.add_column("座位", style="bold", width=10)
-        tbl.add_column("特长", width=24)
-        tbl.add_column("状态", width=28)
+        tbl.add_column("seat", style="bold", width=10)
+        tbl.add_column("strength", width=24)
+        tbl.add_column("status", width=28)
         for a, s in self.seats.items():
             st = s["status"]
             if st == "working":
                 status = Spinner("dots", text=Text(f" {s['detail'][:24]}", style="yellow"))
             else:
-                status = Text(("● " if st != "idle" else "○ ") + st + (f" {s['detail'][:20]}" if s["detail"] else ""),
+                status = Text(("* " if st != "idle" else "- ") + st + (f" {s['detail'][:20]}" if s["detail"] else ""),
                               style=STATUS_STYLE.get(st, "white"))
             role = s["role"] + (" " if s["role"] else "") + ROLE_DESC.get(a, "")
             tbl.add_row(a, role, status)
-        return Panel(tbl, title="座位", border_style="blue")
+        return Panel(tbl, title="seat", border_style="blue")
 
     def _log(self):
         body = Text("\n".join(list(self.logs)[-12:]), style="dim")
-        return Panel(body, title="会议日志", border_style="grey50")
+        return Panel(body, title="Meeting Log", border_style="grey50")
 
     def _refresh(self):
         self.live.update(Group(self._header(), self._seats(), self._log()))
 
-    # ---- Reporter 钩子 ----
+    # ---- Reporter hooks ----
     def start(self, repo, task, commander, reviewer, max_iters):
         self.info = dict(repo=repo, task=task, commander=commander, reviewer=reviewer, max_iters=max_iters)
-        self.seats[commander]["role"] = "[总指挥]"
-        self.seats[reviewer]["role"] = ("[验证]" if not self.seats[reviewer]["role"] else self.seats[reviewer]["role"] + "[验证]")
-        self.logs.append(f"开桌：{task}")
+        self.seats[commander]["role"] = "[commander]"
+        self.seats[reviewer]["role"] = ("[reviewer]" if not self.seats[reviewer]["role"] else self.seats[reviewer]["role"] + "[reviewer]")
+        self.logs.append(f"open table: {task}")
         self._refresh()
 
     def round(self, it):
@@ -94,11 +93,11 @@ class RichReporter(conductor.Reporter):
         for s in self.seats.values():
             if s["status"] in ("done", "block", "err"):
                 s["status"], s["detail"] = "idle", ""
-        self.logs.append(f"——— 第 {it} 轮 ———")
+        self.logs.append(f"--- Round {it} ---")
         self._refresh()
 
     def plan(self, plan):
-        self.logs.append("派活：" + "; ".join(f"{p['agent']}←{p['subtask'][:24]}" for p in plan))
+        self.logs.append("Assignments: " + "; ".join(f"{p['agent']} <- {p['subtask'][:24]}" for p in plan))
         self._refresh()
 
     def seat(self, agent, mode, subtask="", rc=None, phase="start"):
@@ -107,7 +106,7 @@ class RichReporter(conductor.Reporter):
             return
         if phase == "start":
             s["status"], s["detail"] = "working", f"{mode} {subtask[:20]}"
-            self.logs.append(f"→ {agent} [{mode}] {subtask[:30]}")
+            self.logs.append(f"-> {agent} [{mode}] {subtask[:30]}")
         else:
             if mode == "review":
                 v = conductor.VERDICT_MAP.get(rc, "ERR")
@@ -115,29 +114,29 @@ class RichReporter(conductor.Reporter):
                 s["detail"] = v
             else:
                 s["status"], s["detail"] = ("done" if rc == 0 else "err"), f"rc={rc}"
-            self.logs.append(f"✓ {agent} [{mode}] rc={rc}")
+            self.logs.append(f"done {agent} [{mode}] rc={rc}")
         self._refresh()
 
     def verdict(self, reviewer, v):
         self.last_verdict = v
-        self.logs.append(f"裁决：{reviewer} → {v}")
+        self.logs.append(f"verdict: {reviewer} -> {v}")
         self._refresh()
 
     def finish(self, status, it):
-        self.final = {"PASS": f"✅ 第 {it} 轮通过，收工",
-                      "ERR": "⛔ 验证 ERR，交还人工",
-                      "CAP": f"⛔ 触顶 {it} 轮，交还人工"}.get(status, status)
+        self.final = {"PASS": f"Round {it} passed review",
+                      "ERR": "Review returned ERR; handoff required",
+                      "CAP": f"Reached round cap at {it}; handoff required"}.get(status, status)
         self.logs.append(self.final)
         self._refresh()
 
     def log(self, msg):
         for line in str(msg).splitlines():
             line = line.strip()
-            # 去掉 ANSI 转义，挑有信息量的行
+            # Strip ANSI escapes and keep high-signal log lines.
             import re
             line = re.sub(r"\033\[[0-9;]*m", "", line)
             if line and ("loop-engine]" in line or line.startswith(("error", "warning", "Error"))):
-                self.logs.append(line.replace("[loop-engine] ", "· "))
+                self.logs.append(line.replace("[loop-engine] ", "- "))
         self._refresh()
 
 
@@ -148,7 +147,7 @@ def main() -> int:
     with Live(console=console, screen=is_tty, auto_refresh=True, refresh_per_second=8, transient=False) as live:
         rep = RichReporter(live)
         rc = conductor.run(a.repo, a.task, a.commander, a.reviewer, a.max_iters, a.test_cmd, rep)
-    console.print(f"[bold]指挥程序退出码: {rc}[/bold]")
+    console.print(f"[bold]Conductor exit code: {rc}[/bold]")
     return rc
 
 

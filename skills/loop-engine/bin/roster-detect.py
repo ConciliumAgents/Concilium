@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
-"""roster-detect.py — 圆桌座位探测器（地基）。
+"""Concilium seat detector.
 
-探测本地有哪些 agent 可上桌，各自**实际配置可用**的模型列表（不是全量目录）、
-当前默认模型、支持哪些 mode。输出人类表格（默认）或 `--json`（供 TUI/WebUI/conductor 消费）。
-纯本地探测，不调用任何 agent 干活。仅 Python 标准库。
-
-每个座位的 JSON 含 models: [{"provider":..., "model":..., "default":bool}]，供 UI 做下拉。
+Detect locally available agents, their configured model options, current
+default model, and supported modes. Outputs a human table by default or --json
+for the TUI, Web UI, and conductor. Pure local probing only.
 """
 from __future__ import annotations
 import argparse, json, os, re, shutil, subprocess, sys
@@ -23,7 +21,7 @@ def _run(cmd, timeout=15):
         p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         return (p.stdout or "") + (p.stderr or "")
     except Exception as e:
-        return f"(探测失败: {e})"
+        return f"(probe failed: {e})"
 
 
 def detect_claude():
@@ -36,14 +34,14 @@ def detect_claude():
     tiers = ["opus", "sonnet", "haiku", "fable"]
     d["models"] = [{"provider": "anthropic", "model": m, "default": (m == "opus")} for m in tiers]
     d["model"] = "opus"
-    d["strength"] = "编排/规划/综合、长上下文、多文件重构"
+    d["strength"] = "orchestration/planning/synthesis, long context, multi-file refactoring"
     return d
 
 
 def detect_codex():
     path = shutil.which("codex")
     d = {"seat": "codex", "available": bool(path), "path": path or "",
-         "modes": ["review"], "provider": "openai", "models": []}   # 只验证不执行（慢/连接不稳，与 EXEC_EXCLUDE 一致）
+         "modes": ["review"], "provider": "openai", "models": []}
     if not path:
         return d
     d["version"] = (_run([path, "--version"], 8).strip().splitlines() or [""])[0]
@@ -59,7 +57,8 @@ def detect_codex():
             m = re.search(r'model\s*=\s*"([^"]+)"', txt); model = m.group(1) if m else model
             e = re.search(r'model_reasoning_effort\s*=\s*"([^"]+)"', txt); effort = e.group(1) if e else ""
     d["model"] = model; d["effort"] = effort
-    # codex 不好枚举全量；给当前模型 + 同后端缓存里的几个备选（若有）
+    # Codex is hard to enumerate fully; use the current model plus cached
+    # alternatives from the same backend when available.
     opts = [model]
     cache = HOME / ".hermes" / "provider_models_cache.json"
     if cache.exists():
@@ -69,19 +68,19 @@ def detect_codex():
         except Exception:
             pass
     d["models"] = [{"provider": "openai", "model": m, "default": (m == model)} for m in opts[:6]]
-    d["strength"] = "代码验证/挑致命缺陷（只验证、不执行——慢且连接不稳）"
+    d["strength"] = "code review and critical bug finding; review-only by default"
     return d
 
 
 def _hermes_credentialed(status: str):
-    """从 hermes status 里解析「有凭证/已登录」的后端显示名（只看 API Keys / Auth Providers 段）。"""
+    """Parse credentialed backend display names from hermes status."""
     creds, sec = set(), None
     for line in status.splitlines():
         if "API Keys" in line: sec = "k"
         elif "Auth Providers" in line: sec = "a"
-        elif line.strip().startswith("◆"): sec = None
-        elif sec and "✓" in line and "file" not in line.lower():
-            creds.add(re.sub(r"✓.*", "", line).strip().lower())
+        elif line.strip().startswith("\u25c6"): sec = None
+        elif sec and "\u2713" in line and "file" not in line.lower():
+            creds.add(re.sub(r"\u2713.*", "", line).strip().lower())
     return creds
 
 
@@ -97,7 +96,7 @@ def detect_hermes():
     p = re.search(r"Provider:\s*([^\n]+)", status); cur_prov = (p.group(1).strip() if p else "")
     d["model"] = cur_model; d["provider"] = cur_prov
     creds = _hermes_credentialed(status)
-    # 凭证显示名 → cache provider id
+    # Map credential display names to cache provider ids.
     alias = {"openai codex": "openai-codex", "deepseek": "deepseek", "anthropic": "anthropic",
              "gemini": "gemini", "copilot": "copilot", "openrouter": "openrouter", "xai / grok": "xai"}
     cache = {}
@@ -113,16 +112,16 @@ def detect_hermes():
             continue
         for mod in (cache[pid].get("models", []) or [])[:6]:
             models.append({"provider": pid, "model": mod, "default": (pid == cur_pid and mod == cur_model)})
-    # 若缓存没覆盖到当前默认，至少把默认放进去
+    # If the cache misses the current default, include it at least.
     if cur_model and not any(x["default"] for x in models):
         models.insert(0, {"provider": cur_pid, "model": cur_model, "default": True})
     d["models"] = models
-    d["strength"] = "工具广度（浏览器/computer-use/消息/记忆）；可切异质后端做复审"
+    d["strength"] = "broad tool access; can switch to heterogeneous backends for review"
     return d
 
 
 def detect_kimi():
-    # kimi 常装在 ~/.kimi-code/bin（不一定在标准 PATH 上），which 找不到时回退到该路径
+    # Kimi is often installed under ~/.kimi-code/bin, which may not be on PATH.
     path = shutil.which("kimi")
     if not path:
         cand = HOME / ".kimi-code" / "bin" / "kimi"
@@ -149,7 +148,7 @@ def detect_kimi():
     if default_model not in aliases:
         aliases.insert(0, default_model)
     d["models"] = [{"provider": "moonshot", "model": a, "default": (a == default_model)} for a in aliases]
-    d["strength"] = "异质血统（Moonshot K2.7）、强编码；独立第四方评审，挑别家惯性盲区"
+    d["strength"] = "Moonshot K2.7 lineage, strong coding, independent review"
     return d
 
 
@@ -175,28 +174,28 @@ def detect_all():
 
 
 def print_table(seats):
-    print("\n圆桌座位探测结果")
+    print("\nConcilium seat probe results")
     print("=" * 64)
     for s in seats:
-        mark = "✓" if s.get("available") else "✗"
-        print(f"{mark} {s['seat']:<8} {s.get('version','') or '(未装)'}")
+        mark = "+" if s.get("available") else "-"
+        print(f"{mark} {s['seat']:<8} {s.get('version','') or '(not installed)'}")
         if not s.get("available"):
             continue
-        print(f"    当前默认 : {s.get('model','')} via {s.get('provider','')}"
+        print(f"    current default : {s.get('model','')} via {s.get('provider','')}"
               + (f"  [{s['effort']}]" if s.get("effort") else ""))
-        print(f"    可任模式 : {', '.join(s.get('modes', []))}")
+        print(f"    supported modes : {', '.join(s.get('modes', []))}")
         ms = s.get("models", [])
         if ms:
-            shown = ", ".join((("●" if x.get("default") else "") + x["model"]) for x in ms)
-            print(f"    可选模型 : {shown}")
-        print(f"    特长     : {s.get('strength','')}")
+            shown = ", ".join((("*" if x.get("default") else "") + x["model"]) for x in ms)
+            print(f"    available models : {shown}")
+        print(f"    strength     : {s.get('strength','')}")
     print("=" * 64)
     avail = [s["seat"] for s in seats if s.get("available")]
-    print(f"可上桌座位: {', '.join(avail) or '（无！请先安装至少一个 agent）'}")
+    print(f"available seats: {', '.join(avail) or 'none; install at least one agent first'}")
 
 
 def main():
-    ap = argparse.ArgumentParser(description="圆桌座位探测器")
+    ap = argparse.ArgumentParser(description="Concilium seat detector")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args()
     seats = detect_all()

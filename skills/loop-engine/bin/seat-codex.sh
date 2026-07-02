@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# seat-codex.sh — 请 codex（GPT-5.5，原生壳）入席圆桌
-# 用法: seat-codex.sh <repo> review|exec ["<额外 brief>"]
-#   review: 跑 codex exec review --uncommitted，出 VERDICT；退出码 0=PASS 2=BLOCK 1=ERR
-#   exec  : 跑 codex exec，让 codex 在仓库里实施子任务
+# seat-codex.sh - Run Codex as a native Concilium seat.
+# Usage: seat-codex.sh <repo> review|exec ["<brief>"]
+#   review: run codex exec review and return VERDICT.
+#   exec  : run codex exec to implement a subtask in the repository.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=_lib.sh
 source "${SCRIPT_DIR}/_lib.sh"
@@ -15,10 +15,7 @@ TABLE="$(loop_table_dir "${REPO}")"
 ITER="$(loop_iter "${REPO}")"
 PRE="$(loop_seat_preamble "${REPO}")"
 
-# 可选推理强度旋钮：LOOP_CODEX_EFFORT=low|medium|high|xhigh（默认沿用 ~/.codex/config.toml）
 CODEX_OPTS=()
-# 默认沿用 ~/.codex/config.toml 的推理档（用户偏好 xhigh 满血）；要更快才显式设 LOOP_CODEX_EFFORT=low|medium。
-# 提速的正路是给验证席换快模型（如 DeepSeek），而非把 codex 调蠢。
 [ -n "${LOOP_CODEX_EFFORT:-}" ] && CODEX_OPTS+=(-c "model_reasoning_effort=${LOOP_CODEX_EFFORT}")
 [ -n "${LOOP_SEAT_MODEL:-}" ] && CODEX_OPTS+=(-m "${LOOP_SEAT_MODEL}")
 
@@ -27,15 +24,14 @@ case "${MODE}" in
     OUT="${TABLE}/minutes/iter-${ITER}-codex-review.md"
     INSTR="${PRE}
 
-你的角色：**独立代码验证员**（圆桌验证席）。
-请审查当前工作树中**未提交的改动**（运行 git diff 查看，亦见 KB/diff.patch）的：正确性、安全性、是否满足 KB/task.md 的验收标准、是否引入回归。
-每条发现按严重度标注：[CRITICAL] / [HIGH] / [MEDIUM] / [LOW]，并指出文件与行。
-${BRIEF:+本轮额外关注：${BRIEF}}
+Your role: independent code reviewer for Concilium. Review the current uncommitted changes using git diff and KB/diff.patch. Check correctness, safety, acceptance criteria coverage from KB/task.md, and regressions.
+Label each finding by severity: [CRITICAL], [HIGH], [MEDIUM], or [LOW], and include file and line references when possible.
+${BRIEF:+Additional focus: ${BRIEF}}
 
-**最后必须单独成行输出**（该行只放裁决，不要别的内容）：
-- 若无 HIGH 或 CRITICAL 级问题 → VERDICT: PASS
-- 否则 → VERDICT: BLOCK"
-    loop_log "codex 验证席入席 iter=${ITER}，运行 codex exec review"
+End with one standalone line containing only the verdict:
+- If there are no HIGH or CRITICAL issues: VERDICT: PASS
+- Otherwise: VERDICT: BLOCK"
+    loop_log "codex reviewer seat starting iter=${ITER}; running codex exec review"
     RAW="${OUT}.tmp"
     set +e
     ( cd "${REPO}" && codex exec review ${CODEX_OPTS[@]+"${CODEX_OPTS[@]}"} "${INSTR}" ) >"${RAW}" 2>&1
@@ -44,42 +40,41 @@ ${BRIEF:+本轮额外关注：${BRIEF}}
     loop_publish_minutes "${RAW}" "${OUT}"
     rm -f "${RAW}"
     cat "${OUT}"
-    loop_log "codex 退出码=${rc}，纪要: ${OUT}"
+    loop_log "codex exit code=${rc}; minutes: ${OUT}"
     if [ "${rc}" -ne 0 ]; then
-      loop_warn "codex 进程非零退出 rc=${rc}，判 ERR（多半是用法/网络问题，请人工读 minutes）"
+      loop_warn "codex process exited non-zero rc=${rc}; treating as ERR"
       exit 1
     fi
     loop_codex_verdict "${OUT}"; exit $?
     ;;
   exec)
-    [ -n "${BRIEF}" ] || loop_die "exec 模式需要第三个参数：子任务 brief"
+    [ -n "${BRIEF}" ] || loop_die "exec mode requires a third argument: subtask brief"
     OUT="${TABLE}/minutes/iter-${ITER}-codex-exec.md"
     INSTR="${PRE}
 
-你的角色：**执行席**。请完成下述子任务，并直接在仓库里实施改动（写出干净、符合现有风格的代码）：
-${BRIEF}
+Your role: executor. Complete the subtask below and modify the repository directly with clean code that matches the existing style.
+Subtask: ${BRIEF}
 
-**完成后请在纪要末尾另起一节，写入：**
-## 教训
-### 通用
-- （本次值得归档的通用协作/流程教训，一条一行；无则写\"（无）\"）
-### <项目名>
-- （本次项目专属教训；无则写\"（无）\"）
+At the end of the minutes, add a section exactly like this:
+## Lessons
+### General
+- General collaboration or process lessons worth archiving, one per line; otherwise write \"None.\"
+### <project>
+- Project-specific lessons; otherwise write \"None.\"
 "
-    loop_log "codex 执行席入席 iter=${ITER}，运行 codex exec（workspace-write 沙箱）"
+    loop_log "codex executor seat starting iter=${ITER}; running codex exec"
     RAW="${OUT}.tmp"
     set +e
-    # -s workspace-write：允许在工作区写文件（否则默认 read-only 会卡在写不动）
     ( cd "${REPO}" && codex exec -s workspace-write ${CODEX_OPTS[@]+"${CODEX_OPTS[@]}"} "${INSTR}" ) >"${RAW}" 2>&1
     rc=$?
     set -e
     loop_publish_minutes "${RAW}" "${OUT}"
     rm -f "${RAW}"
     cat "${OUT}"
-    loop_log "codex 退出码=${rc}，纪要: ${OUT}"
+    loop_log "codex exit code=${rc}; minutes: ${OUT}"
     exit "${rc}"
     ;;
   *)
-    loop_die "未知 MODE: ${MODE}（应为 review|exec）"
+    loop_die "unknown MODE: ${MODE} (expected review|exec)"
     ;;
 esac

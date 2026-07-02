@@ -469,7 +469,7 @@ class ConciliumRuntimeAdapterTests(unittest.TestCase):
             result = concilium_runtime.build_preflight(
                 {
                     "repo": td,
-                    "task": "审核执行方案 docs/superpowers/plans/example.md",
+                    "task": "Review implementation plan docs/plans/example.md",
                     "test_cmd": "true",
                     "mode": "preview",
                     "seats": ["codex"],
@@ -877,7 +877,7 @@ class ConciliumRuntimeAdapterTests(unittest.TestCase):
             result = concilium_runtime.run_concilium_adapter(
                 {
                     "repo": str(repo),
-                    "task": "审核执行方案 docs/superpowers/plans/example.md",
+                    "task": "Review implementation plan docs/plans/example.md",
                     "mode": "live_run",
                     "signals": {"plan_review": True, "plan_path": "docs/superpowers/plans/example.md"},
                 },
@@ -918,7 +918,7 @@ class ConciliumRuntimeAdapterTests(unittest.TestCase):
             result = concilium_runtime.run_concilium_adapter(
                 {
                     "repo": str(repo),
-                    "task": "审核执行方案 docs/superpowers/plans/example.md",
+                    "task": "Review implementation plan docs/plans/example.md",
                     "mode": "live_run",
                     "signals": {"plan_review": True, "plan_path": "docs/superpowers/plans/example.md"},
                 },
@@ -953,7 +953,7 @@ class ConciliumRuntimeAdapterTests(unittest.TestCase):
                 result = concilium_runtime.run_concilium_adapter(
                     {
                         "repo": str(repo),
-                        "task": "审核执行方案 docs/superpowers/plans/example.md",
+                        "task": "Review implementation plan docs/plans/example.md",
                         "mode": "live_run",
                         "signals": {"plan_review": True, "plan_path": "docs/superpowers/plans/example.md"},
                     },
@@ -985,7 +985,7 @@ class ConciliumRuntimeAdapterTests(unittest.TestCase):
                 result = concilium_runtime.run_concilium_adapter(
                     {
                         "repo": str(repo),
-                        "task": "审核执行方案 docs/superpowers/plans/example.md",
+                        "task": "Review implementation plan docs/plans/example.md",
                         "mode": "live_run",
                         "signals": {"plan_review": True, "plan_path": "docs/superpowers/plans/example.md"},
                     },
@@ -1018,7 +1018,7 @@ class ConciliumRuntimeAdapterTests(unittest.TestCase):
                 result = concilium_runtime.run_concilium_adapter(
                     {
                         "repo": str(repo),
-                        "task": "审核执行方案 docs/superpowers/plans/example.md",
+                        "task": "Review implementation plan docs/plans/example.md",
                         "mode": "live_run",
                         "signals": {"plan_review": True, "plan_path": "docs/superpowers/plans/example.md"},
                     },
@@ -1050,7 +1050,7 @@ class ConciliumRuntimeAdapterTests(unittest.TestCase):
                 result = concilium_runtime.run_concilium_adapter(
                     {
                         "repo": str(repo),
-                        "task": "审核执行方案 docs/superpowers/plans/example.md",
+                        "task": "Review implementation plan docs/plans/example.md",
                         "mode": "live_run",
                         "signals": {"plan_review": True, "plan_path": "docs/superpowers/plans/example.md"},
                     },
@@ -1074,7 +1074,7 @@ class ConciliumRuntimeAdapterTests(unittest.TestCase):
             result = concilium_runtime.run_concilium_adapter(
                 {
                     "repo": str(repo),
-                    "task": "审核执行方案 ../outside.md",
+                    "task": "Review implementation plan ../outside.md",
                     "mode": "live_run",
                     "signals": {"plan_review": True, "plan_path": "../outside.md"},
                 },

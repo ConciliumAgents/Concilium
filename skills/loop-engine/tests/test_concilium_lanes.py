@@ -332,7 +332,7 @@ class ConciliumLanesTests(unittest.TestCase):
                         "timed_run_seat",
                         side_effect=[(0, "VERDICT: PASS"), (0, "VERDICT: PASS"), (0, "VERDICT: PASS")],
                     ):
-                result = concilium_lanes.run_plan_review_lane(repo, "方案评审，只评不改。", "", config, timeout=12)
+                result = concilium_lanes.run_plan_review_lane(repo, "Plan review only; do not modify files.", "", config, timeout=12)
                 self.assertEqual(os.environ.get("LOOP_SESSION"), "stale-session")
 
         self.assertEqual(result["status"], "passed")

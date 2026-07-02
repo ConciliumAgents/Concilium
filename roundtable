@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# roundtable — Concilium one-shot launcher
-#   用法: roundtable --task "<任务>" [--repo <仓库,默认当前目录>] [--test-cmd "<测试命令>"]
+# roundtable - Concilium one-shot launcher
+#   Usage: roundtable --task "<task>" [--repo <repo, defaults to current directory>] [--test-cmd "<Test command>"]
 #        roundtable service [--port N] [--open|--no-open] [--token-file PATH]
-#        roundtable legacy --task "<任务>" [legacy conductor/TUI options]
-#   先探座位: roundtable --doctor
-#   查看入口版本: roundtable --version
+#        roundtable legacy --task "<task>" [legacy conductor/TUI options]
+#   Probe seats first: roundtable --doctor
+#   Show launcher version: roundtable --version
 set -euo pipefail
 
-# --- 解析自身真实位置（支持被软链接到 PATH）---
+# --- Resolve the real launcher path, including PATH symlinks---
 original_src="${BASH_SOURCE[0]}"
 src="$original_src"
 while [ -h "$src" ]; do
@@ -43,16 +43,16 @@ run_legacy() {
     exec "$LEGACY_VENV_PY" "$SKILL/tui/tui.py" ${ARGS[@]+"${ARGS[@]}"}
   else
     LEGACY_PY="${CONCILIUM_LEGACY_PYTHON:-python3}"
-    echo "[roundtable] 未找到 .venv+rich，退回纯文本 legacy conductor" >&2
+    echo "[roundtable] No .venv with rich found; falling back to plain-text legacy conductor" >&2
     exec "$LEGACY_PY" "$SKILL/bin/conductor.py" ${ARGS[@]+"${ARGS[@]}"}
   fi
 }
 
-# 无参数 / 求助
+# No arguments / help
 if [ "$#" -eq 0 ]; then usage; exit 0; fi
 case "${1:-}" in -h|--help) usage; exit 0;; esac
 
-# service：启动本地 Concilium API；浏览器 Debug Console 仅作调试，不是 Phase 5 产品 UI。
+# service:Start the local Concilium API; the browser Debug Console is for debugging only.
 if [ "${1:-}" = "service" ] || [ "${1:-}" = "serve" ] || [ "${1:-}" = "web" ] || [ "${1:-}" = "--web" ]; then
   cmd="${1:-}"
   shift
@@ -68,19 +68,19 @@ if [ "${1:-}" = "sessions" ]; then
   exec "${CONCILIUM_LAUNCHER_PYTHON:-python3}" "$SKILL/bin/session_retention.py" "$@"
 fi
 
-# --version：只看入口版本/路径，不开会
+# --version:Show launcher version and path only; do not start a roundtable
 if [ "${1:-}" = "--version" ]; then
   print_launcher_info
   exit 0
 fi
 
-# --doctor：入口诊断写 stderr；stdout 保留座位探测输出
+# --doctor:Write launcher diagnostics to stderr; keep seat probe output on stdout
 if [ "${1:-}" = "--doctor" ]; then
   print_launcher_info >&2
   exec python3 "$SKILL/bin/roster-detect.py"
 fi
 
-# 若用户没给 --repo，则默认用当前目录
+# Default --repo to the current directory when omitted
 inject_repo=true
 for a in ${@+"$@"}; do
   case "$a" in --repo|--repo=*) inject_repo=false;; esac

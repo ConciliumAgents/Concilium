@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
-"""server.py — 圆桌 WebUI 后端（纯标准库，零依赖）。
+"""Local Concilium Web UI backend (standard library only).
 
-HTTP/token/SSE 外壳。路由、预检、预算闸门、stub/live 执行都委托给
-Concilium runtime adapter。仅 127.0.0.1，不对外。
+HTTP, token, and SSE shell. Routing, preflight, budget guard, and stub/live
+execution are delegated to the Concilium runtime adapter. The service binds to
+127.0.0.1 only.
 
-端点：
-  GET  /                 → 前端页面 index.html
-  GET  /api/status       → Concilium 服务状态
-  GET  /api/doctor       → 座位探测结果（roster-detect --json）
-  GET  /api/config/effective?repo= → 脱敏后的有效配置
-  POST /api/preflight    → 预检 Concilium lane/capacity（JSON body）
-  POST /api/run          → 启动一次圆桌（JSON body），返回 {run_id}
-  GET  /api/events?run=  → SSE 实时事件流
+Endpoints:
+  GET  /                 -> frontend page index.html
+  GET  /api/status       -> service status
+  GET  /api/doctor       -> seat probe results (roster-detect --json)
+  GET  /api/config/effective?repo= -> redacted effective config
+  POST /api/preflight    -> preflight Concilium lane/capacity (JSON body)
+  POST /api/run          -> start one Concilium run (JSON body), returns {run_id}
+  GET  /api/events?run=  -> realtime SSE event stream
 """
 from __future__ import annotations
 import datetime, json, os, queue, re, secrets, subprocess, sys, threading, webbrowser
@@ -33,8 +34,9 @@ RUNS: dict[str, dict] = {}   # run_id -> {"q": Queue}
 _seq = {"n": 0}
 _lock = threading.Lock()
 
-# 启动时生成的 CSRF token：服务 index.html 时注入页面（meta），前端 POST /api/run 必带
-# X-Loop-Token。SSE（EventSource）不能带自定义头，故只校验 POST，不校验 GET /api/events。
+# CSRF token generated at startup. It is injected into index.html as a meta tag
+# and required on POST /api/run and /api/preflight as X-Loop-Token. EventSource
+# cannot send custom headers, so GET /api/events is not checked.
 TOKEN = secrets.token_urlsafe(32)
 SENSITIVE_RESPONSE_KEY_RE = re.compile(
     r"(authorization|auth|headers|api[_-]?key|token|secret|password|credential|private|access[_-]?key)",
@@ -135,7 +137,7 @@ def _run_thread(params: dict, q: "queue.Queue"):
 
 
 def project_info(repo: str) -> dict:
-    """项目自检：是不是 git 仓库、能桥接到几份该项目的 Claude 记忆。"""
+    """Check whether the path is a git repo and count bridgeable Claude memory."""
     p = Path(repo).expanduser()
     out = {"exists": p.is_dir(), "is_git": False, "claude_memory": 0, "memory_files": []}
     if not p.is_dir():
@@ -257,7 +259,7 @@ def write_token_file(path: Path, base_url: str, token: str) -> None:
 
 
 class Handler(BaseHTTPRequestHandler):
-    def log_message(self, *a): pass  # 静音默认访问日志
+    def log_message(self, *a): pass  # Silence default access logs.
 
     def _send(self, code, body: bytes, ctype="application/json; charset=utf-8"):
         self.send_response(code)
@@ -330,7 +332,7 @@ class Handler(BaseHTTPRequestHandler):
         n = int(self.headers.get("Content-Length", "0"))
         params = json.loads(self.rfile.read(n) or b"{}")
         if not params.get("repo") or not params.get("task"):
-            return self._send(400, '{"error":"repo 和 task 必填"}'.encode("utf-8"))
+            return self._send(400, b'{"error":"repo and task are required"}')
         if u.path == "/api/preflight":
             try:
                 return self._send(
@@ -376,7 +378,7 @@ def main(argv=None):
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
-        print("\n已退出。")
+        print("\nExited.")
 
 
 if __name__ == "__main__":

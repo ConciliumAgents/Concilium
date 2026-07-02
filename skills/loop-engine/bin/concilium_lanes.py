@@ -49,7 +49,7 @@ def _scoped_env(updates: dict[str, str]):
 
 
 def _slug(text: str, n: int = 24) -> str:
-    value = re.sub(r"[^0-9A-Za-z一-鿿]+", "-", text).strip("-")
+    value = re.sub(r"[^0-9A-Za-z]+", "-", text).strip("-")
     return value[:n] or "task"
 
 

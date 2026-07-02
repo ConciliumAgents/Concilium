@@ -85,7 +85,7 @@ class LaneRouterTests(unittest.TestCase):
 
     def test_execution_plan_review_routes_to_plan_review_lane(self):
         result = lane_router.route_task(
-            "审核执行方案 docs/superpowers/plans/example.md，成员 BLOCK 后修改方案并复审",
+            "Review implementation plan docs/plans/example.md; revise the plan after a member BLOCK and review again",
             {"plan_review": True, "plan_path": "docs/superpowers/plans/example.md"},
             self.base_config(),
         )
@@ -97,7 +97,7 @@ class LaneRouterTests(unittest.TestCase):
 
     def test_plan_review_defaults_to_native_heterogeneous_seats_without_codex(self):
         result = lane_router.route_task(
-            "审核执行方案 docs/superpowers/plans/example.md，成员 BLOCK 后修改方案并复审",
+            "Review implementation plan docs/plans/example.md; revise the plan after a member BLOCK and review again",
             {"plan_review": True, "plan_path": "docs/superpowers/plans/example.md"},
             self.base_config(),
         )
