@@ -1,5 +1,7 @@
 # Concilium
 
+English | [zh-CN](README.zh-CN.md)
+
 Run real local AI agents as an auditable roundtable.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -39,7 +41,7 @@ task
   -> run-summary.json
 ```
 
-The top-level `roundtable` launcher is the main CLI entrypoint. Most runtime code lives under `skills/loop-engine/bin`. The local service can be started with `roundtable service` when you want API access or the current debug console.
+The top-level `roundtable` launcher is the main CLI entrypoint. Most runtime code lives under `skills/loop-engine/bin`. The `loop-engine` path is a historical name for the Concilium runtime and is kept during the tool preview to avoid breaking scripts, tests, and local workflows. The local service can be started with `roundtable service` when you want API access or the current debug console.
 
 ## Quickstart
 

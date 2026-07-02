@@ -8,8 +8,8 @@ Concilium can continue toward an open-source developer-tool preview. The previou
 
 ## Scope
 
-- Repository: `/Users/melee/Documents/agents`
-- Execution worktree: `/Users/melee/.config/superpowers/worktrees/agents/codex-concilium-open-source-tool-launch`
+- Repository: `<repo-root>`
+- Execution worktree: `<release-worktree>`
 - Release type: open-source developer tool preview
 - Excluded from public collateral: `.roundtable/sessions/**`, `.venv/**`, `evals/**`, `__pycache__/**`
 

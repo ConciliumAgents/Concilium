@@ -44,7 +44,7 @@ class RunSummaryTests(unittest.TestCase):
     def test_build_summary_records_launcher_guard_seats_and_artifact_gate(self):
         summary = concilium_run_summary.build_run_summary(
             base_result(),
-            launcher={"entrypoint": "/Users/melee/.local/bin/roundtable", "repo": "/Users/melee/Documents/agents", "branch": "main", "commit": "abc"},
+            launcher={"entrypoint": "/usr/local/bin/roundtable", "repo": "/tmp/concilium", "branch": "main", "commit": "abc"},
         )
 
         self.assertEqual(summary["schema_version"], "concilium.run_summary.v1")

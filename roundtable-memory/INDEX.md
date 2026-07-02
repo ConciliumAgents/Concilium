@@ -7,14 +7,6 @@
 
 - No archived entries yet.
 
-## amazon-fba
-
-- No archived entries yet.
-
-## finance
-
-- No archived entries yet.
-
 ## _meta
 
 - No archived entries yet.

@@ -8,5 +8,5 @@ __pycache__/
 evals/loop-engine/runs/
 evals/loop-engine/phase2/runs/
 evals/loop-engine/phase2/worktrees/
-# ↓ roundtable-memory/ 是 git 版本化的圆桌持久记忆（索引/教训库/成果），
-#   先确认你想 gitignore 的是什么再说，别手滑加这一行。注释值 spec §9.2-R6。
+# roundtable-memory/ is git-versioned persistent memory for Concilium sessions.
+# Confirm intent before ignoring it; it is part of the public runtime contract.

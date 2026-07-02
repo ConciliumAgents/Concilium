@@ -27,7 +27,7 @@ Current post-closeout unit count is higher than the original Phase 4 closeout ta
 | Check | Result | Evidence |
 |---|---|---|
 | Unit suite | PASS: `Ran 145 tests OK` | `python3 -m unittest discover -s skills/loop-engine/tests` |
-| Phase 4 smoke script | PASS: unit suite, CLI preview, CLI stub run, and diff check completed | `skills/loop-engine/bin/smoke-concilium-phase4.sh /Users/melee/Documents/agents` |
+| Phase 4 smoke script | PASS: unit suite, CLI preview, CLI stub run, and diff check completed | `skills/loop-engine/bin/smoke-concilium-phase4.sh <repo-root>` |
 | CLI preview | PASS: `status=preview`, `lane=fast`, `guard=allowed`, request fingerprint present | `/tmp/concilium-phase4-preview.json` |
 | CLI stub run | PASS: `status=stubbed`, `returncode=0`, `lane=fast`, last event `done` | `/tmp/concilium-phase4-stub.json` |
 | Tiny live Fast smoke gate | GUARD-SKIPPED: `status=confirmation_required`, `returncode=3`, `lane=fast`, guard reason `live run requires confirmation for limited capacity`, last event `done` | Command and redacted summary below; transient full output at `/tmp/concilium-phase4-live-gate.json` |
@@ -60,7 +60,7 @@ Command:
 
 ```bash
 python3 skills/loop-engine/bin/concilium-run.py \
-  --repo /Users/melee/Documents/agents \
+  --repo <repo-root> \
   --task "Append no files; respond with a one-line dry confirmation for Concilium Phase 4 smoke." \
   --test-cmd "true" \
   --mode live_run \
@@ -112,8 +112,8 @@ git status --short
 python3 -m unittest discover -s skills/loop-engine/tests -p 'test_*.py'
 ./roundtable --version
 ./roundtable --doctor
-/Users/melee/.local/bin/roundtable --version
-/Users/melee/.local/bin/roundtable --doctor
+$HOME/.local/bin/roundtable --version
+$HOME/.local/bin/roundtable --doctor
 ```
 
 Only after merge or launcher repointing should the two `--version` outputs show the same intended code line. `--doctor` must continue to probe seats; launcher diagnostics are printed on stderr so the roster output remains usable.

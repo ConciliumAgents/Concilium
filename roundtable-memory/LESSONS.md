@@ -19,7 +19,3 @@
 ## Project-Specific Lessons
 
 ### agents
-
-### amazon-fba
-
-### finance
