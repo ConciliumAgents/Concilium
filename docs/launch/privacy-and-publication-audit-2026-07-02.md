@@ -25,7 +25,7 @@ Concilium can continue toward an open-source developer-tool preview. The previou
 
 ## Required Fixes Before Public Launch
 
-- Owner approval is required before creating, renaming, pushing to, or making public the GitHub repository at `https://github.com/liting0216/Concilium.git`.
+- Owner approval is required before creating, renaming, pushing to, or making public the GitHub repository at `https://github.com/ConciliumAgents/Concilium.git`.
 - Re-run the privacy scan after any new launch collateral or demo assets are added.
 
 ## Non-Blocking Follow-Ups

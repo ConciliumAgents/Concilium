@@ -17,7 +17,7 @@ Concilium coordinates real native agent seats, gates execution with budget/capac
 ## Repository
 
 - Public name: `Concilium`
-- Intended URL: `https://github.com/liting0216/Concilium.git`
+- Intended URL: `https://github.com/ConciliumAgents/Concilium.git`
 - Do not publish the tool preview under the old `loop-engine` repository name.
 
 ## Do Not Claim

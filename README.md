@@ -30,7 +30,7 @@ The goal is truthful orchestration. Concilium should show the selected lane, req
 ## Quickstart
 
 ```bash
-git clone https://github.com/liting0216/Concilium.git
+git clone https://github.com/ConciliumAgents/Concilium.git
 cd Concilium
 ./roundtable --version
 ./roundtable --doctor
