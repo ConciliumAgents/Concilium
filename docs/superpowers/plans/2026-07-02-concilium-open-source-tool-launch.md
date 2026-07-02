@@ -84,7 +84,7 @@ Allowed wording:
 - Create: `README.md`
   - Public entry point, quickstart, truthful release status, architecture summary, safety model, roadmap.
 - Create: `LICENSE`
-  - Open-source license. Default recommendation is Apache-2.0 unless the owner explicitly chooses MIT before implementation.
+  - Open-source license. Owner selected MIT during private precheck.
 - Create: `CONTRIBUTING.md`
   - Narrow contribution rules for early tool preview: bug reports, docs fixes, reproducible demos, and small runtime patches.
 - Create: `CODE_OF_CONDUCT.md`
@@ -259,7 +259,7 @@ Status: BLOCKED | PASS WITH FIXES | PASS
 | Private session artifact boundary | Pending until Step 2 runs | `.roundtable/sessions/**` excluded from collateral |
 | Stale product/private-prototype wording | Pending until Step 3 runs | `rg` command from this task |
 | GitHub community files | Pending until Task 3 runs | README/LICENSE/CONTRIBUTING/SECURITY checks |
-| License readiness | Pending until Task 3 owner decision | Apache-2.0 recommended unless owner chooses MIT |
+| License readiness | PASS | Owner selected MIT during private precheck |
 
 ## Required Fixes Before Public Launch
 
@@ -362,13 +362,13 @@ Commit includes only public positioning docs.
 Default recommendation:
 
 ```text
-Apache-2.0 for this developer tool preview, because it is permissive and includes an explicit patent grant.
+MIT for this developer tool preview, because the owner selected a simpler, more developer-friendly permissive license during private precheck.
 ```
 
 Owner decision gate:
 
 ```text
-Use Apache-2.0 unless the owner explicitly chooses MIT before implementation.
+Use MIT for the developer-tool preview release.
 ```
 
 - [ ] **Step 2: Create contributor scope**

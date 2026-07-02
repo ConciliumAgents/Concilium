@@ -21,7 +21,7 @@ Concilium can continue toward an open-source developer-tool preview. The previou
 | Private session artifact boundary | PASS | `git ls-files .roundtable` returned 0 tracked files. `.roundtable/sessions/**` remains excluded from launch collateral. |
 | Stale product/private-prototype wording | PASS | `docs/loop-engine/agent-moa-positioning.md` now carries a 2026-07-02 supersession note above the historical private-prototype wording. |
 | GitHub community files | PASS | `README.md`, `LICENSE`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, issue templates, and PR template are present. |
-| License readiness | PASS | `LICENSE` uses Apache-2.0 for the developer-tool preview. |
+| License readiness | PASS | `LICENSE` uses MIT for the developer-tool preview. |
 
 ## Required Fixes Before Public Launch
 
