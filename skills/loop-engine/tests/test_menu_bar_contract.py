@@ -174,6 +174,38 @@ class MenuBarContractTests(unittest.TestCase):
         self.assertEqual(model["execution_snapshot"]["final_verdict"], "retry_required")
         self.assertEqual(model["execution_snapshot"]["retry_required_seats"], ["kimi"])
 
+    def test_view_model_blocks_non_passing_run_summary(self):
+        menu_bar_view_model = load_module("menu_bar_view_model", VIEW_MODEL)
+
+        model = menu_bar_view_model.build_popover_model(
+            status={"state": "idle"},
+            effective_config={},
+            preflight={
+                "route": {"lane": "audit"},
+                "guard": {"status": "allowed"},
+                "run_summary": {"final_verdict": "retry_required", "retry_required_seats": ["kimi"]},
+            },
+            events=[],
+        )
+
+        self.assertEqual(model["verdict"]["kind"], "blocked")
+        self.assertFalse(model["primary_action"]["enabled"])
+
+    def test_view_model_blocks_failed_artifact_gate(self):
+        menu_bar_view_model = load_module("menu_bar_view_model", VIEW_MODEL)
+        fixture = self.fixture("active_fast.json")
+        fixture["events"] = [
+            {
+                "type": "artifact_gate",
+                "artifact_gate": {"status": "failed", "disallowed_delta": ["src/app.py"]},
+            }
+        ]
+
+        model = menu_bar_view_model.build_popover_model(**fixture)
+
+        self.assertEqual(model["verdict"]["kind"], "blocked")
+        self.assertFalse(model["primary_action"]["enabled"])
+
     def test_contract_doc_mentions_token_loader_and_effective_config_envelope(self):
         text = (ROOT / "docs" / "loop-engine" / "concilium-menu-bar-contract.md").read_text(encoding="utf-8")
 

@@ -3,6 +3,8 @@ from __future__ import annotations
 
 
 BLOCKING_GUARD_STATUSES = {"blocked", "confirmation_required"}
+PASSING_FINAL_VERDICTS = {"", "pass"}
+PASSING_ARTIFACT_GATE_STATUSES = {"", "passed"}
 
 
 def _dict(value: object) -> dict:
@@ -61,9 +63,17 @@ def build_popover_model(status: dict, effective_config: dict, preflight: dict, e
     capacity = _dict_items(preflight.get("capacity"))
     latest_event = _latest_seat_event(events)
     latest_artifact_gate = _latest_event_of_type(events, "artifact_gate")
+    artifact_gate = _dict(run_summary.get("artifact_gate") or latest_artifact_gate.get("artifact_gate"))
     seat_events = _seat_event_by_name(events)
     guard_status = str(guard.get("status") or "")
-    blocked = guard_status in BLOCKING_GUARD_STATUSES or preflight_status.get("status") == "blocked"
+    final_verdict = str(run_summary.get("final_verdict") or "")
+    artifact_gate_status = str(artifact_gate.get("status") or "")
+    blocked = (
+        guard_status in BLOCKING_GUARD_STATUSES
+        or preflight_status.get("status") == "blocked"
+        or final_verdict not in PASSING_FINAL_VERDICTS
+        or artifact_gate_status not in PASSING_ARTIFACT_GATE_STATUSES
+    )
 
     return {
         "header": {
@@ -81,7 +91,7 @@ def build_popover_model(status: dict, effective_config: dict, preflight: dict, e
         },
         "verdict": {
             "kind": "blocked" if blocked else "ready",
-            "text": guard.get("reason") or preflight_status.get("status", ""),
+            "text": guard.get("reason") or final_verdict or artifact_gate_status or preflight_status.get("status", ""),
             "blocking_seats": list(preflight_status.get("blocking_seats") or []),
         },
         "primary_action": {
@@ -121,8 +131,8 @@ def build_popover_model(status: dict, effective_config: dict, preflight: dict, e
             "active_seat": latest_event.get("agent") or latest_event.get("seat", ""),
             "latest_event": latest_event.get("type", ""),
             "phase": latest_event.get("phase", ""),
-            "artifact_gate": latest_artifact_gate.get("artifact_gate", {}),
-            "final_verdict": run_summary.get("final_verdict", ""),
+            "artifact_gate": artifact_gate,
+            "final_verdict": final_verdict,
             "retry_required_seats": list(run_summary.get("retry_required_seats") or []),
             "elapsed_seconds": latest_event.get("elapsed_seconds", 0),
         },
