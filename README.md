@@ -6,7 +6,7 @@ Run real local AI agents as an auditable roundtable.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Concilium is a local developer tool for coordinating multiple agent CLIs. It does not ask one model to imitate a team. It routes work to actual local seats such as Claude Code, Codex CLI, Hermes, or Kimi when they are installed, then records what was requested, which lane ran, which seats participated, what checks ran, and how the run settled.
+Concilium is a local developer tool for coordinating multiple agent CLIs. It does not ask one model to imitate a team. It routes work to actual local seats such as Claude Code, Codex CLI, Hermes Agent, or Kimi Code when they are installed, then records what was requested, which lane ran, which seats participated, what checks ran, and how the run settled.
 
 [Quickstart](#quickstart) | [Core Concepts](#core-concepts) | [Safety](#safety-and-privacy) | [From Source](#from-source) | [Contributing](#contributing)
 
@@ -82,7 +82,7 @@ The quickstart uses dry-run commands first. Commands that run live seats may con
 
 **Seat**
 
-A local agent CLI that Concilium can call, such as Claude Code, Codex CLI, Hermes, or Kimi. Seat availability depends on your machine.
+A local agent CLI that Concilium can call, such as Claude Code, Codex CLI, Hermes Agent, or Kimi Code. Seat availability depends on your machine.
 
 **Lane**
 

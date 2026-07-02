@@ -10,7 +10,7 @@
 
 ## Concilium 是什么
 
-Concilium 是一个本地开发者工具，用来协调多个 agent CLI。它不会要求一个模型假装成一个团队，而是把任务路由给你机器上真实安装的本地席位，例如 Claude Code、Codex CLI、Hermes 或 Kimi。运行后，Concilium 会记录请求内容、执行 lane、参与席位、检查结果，以及本次运行如何收束。
+Concilium 是一个本地开发者工具，用来协调多个 agent CLI。它不会要求一个模型假装成一个团队，而是把任务路由给你机器上真实安装的本地席位，例如 Claude Code、Codex CLI、Hermes Agent 或 Kimi Code。运行后，Concilium 会记录请求内容、执行 lane、参与席位、检查结果，以及本次运行如何收束。
 
 ## 为什么需要它
 
@@ -84,7 +84,7 @@ python3 skills/loop-engine/bin/concilium-run.py \
 
 **Seat**
 
-Concilium 可以调用的本地 agent CLI，例如 Claude Code、Codex CLI、Hermes 或 Kimi。席位是否可用取决于你的机器环境。
+Concilium 可以调用的本地 agent CLI，例如 Claude Code、Codex CLI、Hermes Agent 或 Kimi Code。席位是否可用取决于你的机器环境。
 
 **Lane**
 
