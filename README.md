@@ -51,6 +51,8 @@ Prerequisites:
 - `git` and `ripgrep`.
 - At least one supported local agent CLI if you want live runs.
 
+The `roundtable` launcher uses `CONCILIUM_LAUNCHER_PYTHON` when set. Otherwise it looks for `.venv/bin/python`, then `python3.14`, `python3.13`, `python3.12`, `python3.11`, and finally `python3`. If your system `python3` is older than 3.11, make sure a Python 3.11+ executable is on `PATH` or set `CONCILIUM_LAUNCHER_PYTHON=/path/to/python`.
+
 ```bash
 git clone https://github.com/ConciliumAgents/Concilium.git
 cd Concilium
@@ -58,7 +60,7 @@ cd Concilium
 ./roundtable --version
 ./roundtable --doctor
 
-python3 skills/loop-engine/bin/concilium-run.py \
+python3.11 skills/loop-engine/bin/concilium-run.py \
   --repo "$PWD" \
   --task "Preview a README review route without calling live seats." \
   --test-cmd "true" \

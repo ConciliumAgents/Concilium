@@ -53,6 +53,8 @@ task
 - `git` 和 `ripgrep`。
 - 如果要运行真实席位，需要至少一个已安装并已登录的本地 agent CLI。
 
+`roundtable` launcher 会优先使用 `CONCILIUM_LAUNCHER_PYTHON` 指定的解释器；如果没有设置，它会依次查找 `.venv/bin/python`、`python3.14`、`python3.13`、`python3.12`、`python3.11`，最后才尝试 `python3`。如果系统默认 `python3` 低于 3.11，请确保 `PATH` 上有 Python 3.11+，或设置 `CONCILIUM_LAUNCHER_PYTHON=/path/to/python`。
+
 ```bash
 git clone https://github.com/ConciliumAgents/Concilium.git
 cd Concilium
@@ -60,7 +62,7 @@ cd Concilium
 ./roundtable --version
 ./roundtable --doctor
 
-python3 skills/loop-engine/bin/concilium-run.py \
+python3.11 skills/loop-engine/bin/concilium-run.py \
   --repo "$PWD" \
   --task "Preview a README review route without calling live seats." \
   --test-cmd "true" \

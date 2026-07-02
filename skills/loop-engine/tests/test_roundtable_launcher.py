@@ -31,12 +31,127 @@ class RoundtableLauncherTests(unittest.TestCase):
             stub.chmod(stub.stat().st_mode | stat.S_IXUSR)
             env = dict(os.environ)
             env["PATH"] = f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"
+            env["CONCILIUM_LAUNCHER_PYTHON"] = str(stub)
 
             proc = subprocess.run([str(LAUNCHER), "--doctor"], text=True, capture_output=True, env=env, check=True)
 
         self.assertIn("roster-detect.py", proc.stdout)
         self.assertIn("Concilium roundtable", proc.stderr)
         self.assertIn(f"repo_root: {ROOT}", proc.stderr)
+
+    def test_doctor_uses_configured_launcher_python(self):
+        with tempfile.TemporaryDirectory() as td:
+            bin_dir = pathlib.Path(td) / "bin"
+            bin_dir.mkdir()
+            bad_python3 = bin_dir / "python3"
+            bad_python3.write_text(
+                "#!/usr/bin/env bash\n"
+                "echo 'wrong python3 was used' >&2\n"
+                "exit 43\n",
+                encoding="utf-8",
+            )
+            bad_python3.chmod(bad_python3.stat().st_mode | stat.S_IXUSR)
+
+            configured_python = pathlib.Path(td) / "python-good"
+            capture = pathlib.Path(td) / "argv.txt"
+            configured_python.write_text(
+                "#!/usr/bin/env bash\n"
+                "printf '%s\\n' \"$@\" > \"$CAPTURE_ARGV\"\n",
+                encoding="utf-8",
+            )
+            configured_python.chmod(configured_python.stat().st_mode | stat.S_IXUSR)
+
+            env = dict(os.environ)
+            env["PATH"] = f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"
+            env["CONCILIUM_LAUNCHER_PYTHON"] = str(configured_python)
+            env["CAPTURE_ARGV"] = str(capture)
+
+            proc = subprocess.run(
+                [str(LAUNCHER), "--doctor"],
+                text=True,
+                capture_output=True,
+                env=env,
+            )
+            argv = capture.read_text(encoding="utf-8")
+
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("roster-detect.py", argv)
+        self.assertNotIn("wrong python3 was used", proc.stderr)
+
+    def test_doctor_prefers_compatible_python_when_default_python3_is_too_old(self):
+        with tempfile.TemporaryDirectory() as td:
+            temp_root = pathlib.Path(td) / "concilium"
+            temp_root.mkdir()
+            launcher = temp_root / "roundtable"
+            launcher.write_text(LAUNCHER.read_text(encoding="utf-8"), encoding="utf-8")
+            launcher.chmod(launcher.stat().st_mode | stat.S_IXUSR)
+            (temp_root / "skills" / "loop-engine" / "bin").mkdir(parents=True)
+
+            bin_dir = pathlib.Path(td) / "bin"
+            bin_dir.mkdir()
+            for name in ("python3", "python3.14", "python3.13", "python3.12"):
+                bad_python = bin_dir / name
+                bad_python.write_text(
+                    "#!/usr/bin/env bash\n"
+                    f"echo 'incompatible {name} was used' >&2\n"
+                    "exit 43\n",
+                    encoding="utf-8",
+                )
+                bad_python.chmod(bad_python.stat().st_mode | stat.S_IXUSR)
+
+            good_python311 = bin_dir / "python3.11"
+            capture = pathlib.Path(td) / "argv.txt"
+            good_python311.write_text(
+                "#!/usr/bin/env bash\n"
+                "if [ \"${1:-}\" = \"-c\" ]; then exit 0; fi\n"
+                "printf '%s\\n' \"$@\" > \"$CAPTURE_ARGV\"\n",
+                encoding="utf-8",
+            )
+            good_python311.chmod(good_python311.stat().st_mode | stat.S_IXUSR)
+
+            env = dict(os.environ)
+            env.pop("CONCILIUM_LAUNCHER_PYTHON", None)
+            env["PATH"] = f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"
+            env["CAPTURE_ARGV"] = str(capture)
+
+            proc = subprocess.run(
+                [str(launcher), "--doctor"],
+                text=True,
+                capture_output=True,
+                env=env,
+            )
+            argv = capture.read_text(encoding="utf-8")
+
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("roster-detect.py", argv)
+        self.assertNotIn("incompatible python", proc.stderr)
+
+    def test_doctor_reports_clear_error_when_no_compatible_python_exists(self):
+        with tempfile.TemporaryDirectory() as td:
+            temp_root = pathlib.Path(td) / "concilium"
+            temp_root.mkdir()
+            launcher = temp_root / "roundtable"
+            launcher.write_text(LAUNCHER.read_text(encoding="utf-8"), encoding="utf-8")
+            launcher.chmod(launcher.stat().st_mode | stat.S_IXUSR)
+            (temp_root / "skills" / "loop-engine" / "bin").mkdir(parents=True)
+
+            bin_dir = pathlib.Path(td) / "bin"
+            bin_dir.mkdir()
+            for name in ("python3", "python3.14", "python3.13", "python3.12", "python3.11"):
+                bad_python = bin_dir / name
+                bad_python.write_text("#!/usr/bin/env bash\nexit 1\n", encoding="utf-8")
+                bad_python.chmod(bad_python.stat().st_mode | stat.S_IXUSR)
+
+            env = dict(os.environ)
+            env.pop("CONCILIUM_LAUNCHER_PYTHON", None)
+            env["PATH"] = f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"
+
+            proc = subprocess.run([str(launcher), "--doctor"], text=True, capture_output=True, env=env)
+
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("Python 3.11+ is required", proc.stderr)
+        self.assertNotIn("No such file or directory", proc.stderr)
+        self.assertNotIn("exec:", proc.stderr)
 
     def test_default_task_invocation_execs_concilium_run_live(self):
         with tempfile.TemporaryDirectory() as td:
