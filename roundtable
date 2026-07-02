@@ -63,6 +63,11 @@ if [ "${1:-}" = "service" ] || [ "${1:-}" = "serve" ] || [ "${1:-}" = "web" ] ||
   exec "$PY" "$SKILL/web/server.py" ${@+"$@"}
 fi
 
+if [ "${1:-}" = "sessions" ]; then
+  shift
+  exec "${CONCILIUM_LAUNCHER_PYTHON:-python3}" "$SKILL/bin/session_retention.py" "$@"
+fi
+
 # --version：只看入口版本/路径，不开会
 if [ "${1:-}" = "--version" ]; then
   print_launcher_info

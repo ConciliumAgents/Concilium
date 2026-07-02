@@ -130,6 +130,26 @@ class RoundtableLauncherTests(unittest.TestCase):
             self.assertIn("deprecated", proc.stderr.lower())
             self.assertIn("service", proc.stderr.lower())
 
+    def test_sessions_subcommand_dispatches_retention_tool(self):
+        with tempfile.TemporaryDirectory() as td:
+            fake_python = pathlib.Path(td) / "python"
+            log = pathlib.Path(td) / "args.txt"
+            fake_python.write_text(
+                "#!/bin/sh\n"
+                f"printf '%s\\n' \"$@\" > {log}\n"
+                "exit 0\n",
+                encoding="utf-8",
+            )
+            fake_python.chmod(0o755)
+            env = dict(os.environ)
+            env["CONCILIUM_LAUNCHER_PYTHON"] = str(fake_python)
+            subprocess.run([str(LAUNCHER), "sessions", "scan", "--repo", td], env=env, check=True)
+
+            args = log.read_text(encoding="utf-8")
+
+        self.assertIn("session_retention.py", args)
+        self.assertIn("scan", args)
+
     def test_legacy_subcommand_keeps_old_conductor_path_explicit(self):
         with tempfile.TemporaryDirectory() as td:
             stub = pathlib.Path(td) / "python-stub"
