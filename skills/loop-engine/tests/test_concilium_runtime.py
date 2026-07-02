@@ -544,6 +544,58 @@ class ConciliumRuntimeAdapterTests(unittest.TestCase):
             self.assertEqual(result["run_summary"]["final_verdict"], "pass")
             self.assertTrue(summary_path.is_file())
 
+    def test_quota_exhausted_review_seat_emits_retry_required_summary(self):
+        sink = concilium_runtime.concilium_events.ListEventSink()
+
+        def executor(preview, effective):
+            del preview, effective
+            return {
+                "status": "retry_required",
+                "lane": "plan_review",
+                "returncode": 1,
+                "seat_results": [
+                    {"seat": "claude", "mode": "review", "backend_type": "external_cli", "status": "invoked", "rc": 0, "verdict": "PASS"},
+                    {"seat": "hermes", "mode": "review", "backend_type": "external_cli", "status": "invoked", "rc": 0, "verdict": "PASS"},
+                    {
+                        "seat": "kimi",
+                        "mode": "review",
+                        "backend_type": "external_cli",
+                        "status": "invoked",
+                        "rc": 1,
+                        "verdict": "ERR",
+                        "output_tail": "provider.rate_limit: 429 You've reached your usage limit for this period.",
+                    },
+                ],
+                "unresolved_blockers": [{"severity": "MEDIUM", "summary": "reviewer ERR; retry, fallback, or mark unavailable"}],
+            }
+
+        with tempfile.TemporaryDirectory() as td:
+            repo = pathlib.Path(td)
+            init_repo(repo)
+            config = copy.deepcopy(BASE_CONFIG)
+            config["lanes"]["plan_review"] = {"seats": ["claude", "hermes", "kimi"], "max_rounds": 3}
+            result = concilium_runtime.run_concilium_adapter(
+                {
+                    "repo": str(repo),
+                    "task": "Review plan.",
+                    "mode": "live_run",
+                    "signals": {"plan_review": True, "plan_path": "docs/superpowers/plans/example.md"},
+                },
+                event_sink=sink,
+                config=config,
+                capacity=[
+                    capacity_record("claude", "ok"),
+                    capacity_record("hermes", "ok"),
+                    capacity_record("kimi", "ok"),
+                ],
+                lane_executor=executor,
+            )
+
+        self.assertEqual(result["run_summary"]["final_verdict"], "retry_required")
+        self.assertEqual(result["product_status"], "retry_required")
+        self.assertEqual(result["run_summary"]["retry_required_seats"], ["kimi"])
+        self.assertNotIn("kimi", result["run_summary"]["blocking_seats"])
+
     def test_live_audit_default_executor_propagates_reviewer_block(self):
         with tempfile.TemporaryDirectory() as td:
             repo = pathlib.Path(td)

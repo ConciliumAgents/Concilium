@@ -57,6 +57,7 @@ def _launcher_info() -> dict:
 def _attach_run_summary(result: dict) -> dict:
     summary = concilium_run_summary.build_run_summary(result, launcher=_launcher_info())
     result["run_summary"] = summary
+    result["product_status"] = summary["final_verdict"]
     session_path = str(result.get("session_path", "")).strip()
     if session_path:
         concilium_run_summary.write_run_summary(Path(session_path) / "run-summary.json", result, launcher=_launcher_info())
@@ -470,6 +471,7 @@ def run_concilium_adapter(
         result = dict(preview)
         result["events"] = _events_from_sink(sink)
         result["run_summary"] = concilium_run_summary.build_run_summary(result, launcher=_launcher_info())
+        result["product_status"] = result["run_summary"]["final_verdict"]
         return result
 
     _emit_start_preflight_guard(sink, preview)

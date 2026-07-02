@@ -70,6 +70,12 @@ This lets the user distinguish a Codex-hosted subagent audit from a real `seat-*
 
 When a runtime slice has not actually dispatched a reviewer seat, it must emit `status: not_invoked` instead of implying quota was consumed.
 
+### Quota Exhaustion And Provisional Closure
+
+Seat quota exhaustion is not the same as reviewer disagreement. Runtime summaries classify rate-limit, quota, usage-limit, and refresh-window failures as `quota_exhausted` and set `final_verdict: retry_required` unless the failed seat is not required for the current lane. The UI must not display this as PASS. It should display the passing seats and the exact retry seat, for example `kimi retry required after capacity refresh`.
+
+If a seat previously raised a BLOCK in the same implementation closure sequence, a later quota failure by that same seat cannot close the sequence as PASS. The sequence remains `retry_required` until that seat passes or the user explicitly removes it from the required seat set.
+
 ## Audit Artifact Gate
 
 Read-only Audit Lane runs must expose artifact-gate status in the event stream. A run can be operationally useful but still incomplete when the required report was not written, was empty or stale, or when new workspace delta escaped the allowed report paths. The UI should treat `artifact_gate.status != "passed"` as a blocked/completion-failed state and surface `missing`, `empty`, `unchanged_required`, `disallowed`, and `disallowed_delta` without showing secret-bearing raw logs.
