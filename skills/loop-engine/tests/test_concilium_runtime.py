@@ -506,6 +506,44 @@ class ConciliumRuntimeAdapterTests(unittest.TestCase):
         self.assertEqual([event["type"] for event in sink.events[-3:]], ["artifact_gate", "finish", "done"])
         self.assertEqual(sink.events[-1]["type"], "done")
 
+    def test_live_run_attaches_run_summary_and_writes_session_summary(self):
+        def executor(preview, effective):
+            del preview, effective
+            session = repo / ".roundtable" / "sessions" / "audit-unit"
+            return {
+                "status": "ran",
+                "lane": "audit",
+                "returncode": 0,
+                "session_path": str(session),
+                "seat_results": [
+                    {"seat": "claude", "mode": "review", "backend_type": "external_cli", "status": "invoked", "rc": 0, "verdict": "PASS"},
+                ],
+                "verify": {"returncode": 0, "output": "OK"},
+            }
+
+        with tempfile.TemporaryDirectory() as td:
+            repo = pathlib.Path(td)
+            init_repo(repo)
+            config = copy.deepcopy(BASE_CONFIG)
+            config["lanes"]["audit"]["seats"] = ["claude"]
+            result = concilium_runtime.run_concilium_adapter(
+                {
+                    "repo": str(repo),
+                    "task": "Read-only audit.",
+                    "mode": "live_run",
+                    "signals": {"read_only": True, "ambiguous": True},
+                },
+                event_sink=concilium_runtime.concilium_events.ListEventSink(),
+                config=config,
+                capacity=[capacity_record("claude", "ok")],
+                lane_executor=executor,
+            )
+
+            summary_path = repo / ".roundtable" / "sessions" / "audit-unit" / "run-summary.json"
+
+            self.assertEqual(result["run_summary"]["final_verdict"], "pass")
+            self.assertTrue(summary_path.is_file())
+
     def test_live_audit_default_executor_propagates_reviewer_block(self):
         with tempfile.TemporaryDirectory() as td:
             repo = pathlib.Path(td)

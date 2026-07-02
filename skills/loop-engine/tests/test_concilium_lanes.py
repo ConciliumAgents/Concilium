@@ -135,6 +135,24 @@ class ConciliumLanesTests(unittest.TestCase):
         self.assertEqual([row["seat"] for row in result["seat_results"]], ["claude", "kimi"])
         self.assertEqual([row["verdict"] for row in result["seat_results"]], ["PASS", "PASS"])
 
+    def test_audit_lane_returns_session_path(self):
+        with tempfile.TemporaryDirectory() as td, \
+                mock.patch.object(concilium_lanes.process_runner, "run_process_group", side_effect=self._successful_process), \
+                mock.patch.object(concilium_lanes.conductor, "write_roster", return_value=["claude"]), \
+                mock.patch.object(concilium_lanes.conductor, "set_participants"), \
+                mock.patch.object(concilium_lanes.conductor, "timed_run_seat", return_value=(0, "VERDICT: PASS")):
+            repo = pathlib.Path(td).resolve()
+            result = concilium_lanes.run_audit_lane(
+                repo,
+                "Read-only audit.",
+                "",
+                {"lanes": {"audit": {"seats": ["claude"]}}, "seat_models": {}},
+                timeout=12,
+            )
+
+        self.assertEqual(result["status"], "ran")
+        self.assertIn("/.roundtable/sessions/audit-", result["session_path"])
+
     def test_audit_lane_ignores_inherited_loop_session_by_default(self):
         observed = {}
 
@@ -233,6 +251,60 @@ class ConciliumLanesTests(unittest.TestCase):
             [("claude", "review"), ("hermes", "review"), ("kimi", "review")],
         )
         self.assertEqual([row["verdict"] for row in result["seat_results"]], ["PASS", "PASS", "PASS"])
+
+    def test_plan_review_lane_returns_session_path_on_retry_required(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo = pathlib.Path(td).resolve()
+            plan = repo / "docs" / "superpowers" / "plans" / "example.md"
+            plan.parent.mkdir(parents=True)
+            plan.write_text("# Example Plan\n", encoding="utf-8")
+            config = {
+                "lanes": {"plan_review": {"seats": ["kimi"], "plan_path": str(plan.relative_to(repo))}},
+                "seat_models": {},
+            }
+            with mock.patch.object(concilium_lanes.process_runner, "run_process_group", side_effect=self._successful_process), \
+                    mock.patch.object(concilium_lanes.conductor, "write_roster", return_value=["kimi"]), \
+                    mock.patch.object(concilium_lanes.conductor, "set_participants"), \
+                    mock.patch.object(concilium_lanes.conductor, "timed_run_seat", return_value=(1, "provider.rate_limit: 429 quota")):
+                result = concilium_lanes.run_plan_review_lane(repo, "Review plan.", "", config, timeout=12)
+
+        self.assertEqual(result["status"], "retry_required")
+        self.assertIn("/.roundtable/sessions/plan-review-", result["session_path"])
+
+    def test_plan_review_bad_plan_path_returns_blocked_without_session_path(self):
+        result = concilium_lanes.run_plan_review_lane(
+            "/tmp/repo",
+            "Review plan.",
+            "",
+            {"lanes": {"plan_review": {"seats": ["kimi"], "plan_path": "../escape.md"}}, "seat_models": {}},
+            timeout=12,
+        )
+
+        self.assertEqual(result["status"], "blocked")
+        self.assertNotIn("session_path", result)
+
+    def test_review_lane_preserves_delegated_session_path_without_summary_attachment(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo = pathlib.Path(td).resolve()
+            session = repo / ".roundtable" / "sessions" / "review-unit"
+            delegated = {
+                "status": "done",
+                "returncode": 0,
+                "session_path": str(session),
+            }
+            with mock.patch.object(concilium_lanes.review_lane_module, "run_review_lane", return_value=delegated):
+                result = concilium_lanes.run_review_lane(
+                    repo,
+                    "Review and repair.",
+                    "",
+                    {"lanes": {"review": {}}, "seat_models": {}},
+                    timeout=12,
+                )
+
+        self.assertEqual(result["status"], "ran")
+        self.assertEqual(result["lane"], "review")
+        self.assertEqual(result["session_path"], str(session))
+        self.assertNotIn("run_summary", result)
 
     def test_plan_review_lane_ignores_inherited_loop_session_by_default(self):
         observed = {}

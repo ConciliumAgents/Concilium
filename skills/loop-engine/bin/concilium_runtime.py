@@ -14,6 +14,7 @@ import concilium_config  # noqa: E402
 import concilium_events  # noqa: E402
 import concilium_lanes  # noqa: E402
 import concilium_preflight  # noqa: E402
+import concilium_run_summary  # noqa: E402
 import capacity_status  # noqa: E402
 import concilium_artifacts  # noqa: E402
 import lane_router  # noqa: E402
@@ -44,6 +45,22 @@ def _load_local_module(name: str, filename: str):
 
 
 budget_guard = _load_local_module("_concilium_budget_guard", "budget_guard.py")
+
+
+def _launcher_info() -> dict:
+    return {
+        "entrypoint": str(Path(__file__).resolve().parents[3] / "roundtable"),
+        "repo": str(Path(__file__).resolve().parents[3]),
+    }
+
+
+def _attach_run_summary(result: dict) -> dict:
+    summary = concilium_run_summary.build_run_summary(result, launcher=_launcher_info())
+    result["run_summary"] = summary
+    session_path = str(result.get("session_path", "")).strip()
+    if session_path:
+        concilium_run_summary.write_run_summary(Path(session_path) / "run-summary.json", result, launcher=_launcher_info())
+    return result
 
 
 def _bool(value: object) -> bool:
@@ -452,6 +469,7 @@ def run_concilium_adapter(
     if preview["request"]["mode"] == "preview":
         result = dict(preview)
         result["events"] = _events_from_sink(sink)
+        result["run_summary"] = concilium_run_summary.build_run_summary(result, launcher=_launcher_info())
         return result
 
     _emit_start_preflight_guard(sink, preview)
@@ -462,7 +480,7 @@ def run_concilium_adapter(
         result["status"] = guard.get("status")
         result["returncode"] = 3
         result["events"] = _events_from_sink(sink)
-        return result
+        return _attach_run_summary(result)
 
     if preview["request"]["mode"] == "stub_run":
         for seat in preview["route"].get("required_seats") or []:
@@ -478,7 +496,7 @@ def run_concilium_adapter(
         result["status"] = "stubbed"
         result["returncode"] = 0
         result["events"] = _events_from_sink(sink)
-        return result
+        return _attach_run_summary(result)
 
     artifact_baseline = (
         concilium_artifacts.collect_delta(preview["request"]["repo"]).get("delta_paths", [])
@@ -525,4 +543,4 @@ def run_concilium_adapter(
     result.update(execution_result)
     result["guard"] = guard
     result["events"] = _events_from_sink(sink)
-    return result
+    return _attach_run_summary(result)

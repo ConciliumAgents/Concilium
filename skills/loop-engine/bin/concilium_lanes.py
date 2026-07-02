@@ -92,6 +92,20 @@ def _lane_env(lane: str, task: str, timeout: int, config: dict) -> dict[str, str
     return env
 
 
+def _session_path(repo: str | Path, env: dict[str, str]) -> str:
+    return str(Path(repo).expanduser().resolve() / ".roundtable" / "sessions" / str(env.get("LOOP_SESSION", "")))
+
+
+def _read_roundtable_state(session_path: str) -> dict:
+    path = Path(session_path) / "roundtable.json"
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+
+
 def _filter_available_seats(requested: list[str], seated: list[str]) -> list[str]:
     available = set(seated)
     return [seat for seat in requested if seat in available]
@@ -160,6 +174,7 @@ def run_fast_lane(
             "lane": "fast",
             "agent": agent,
             "returncode": agent_rc if agent_rc != 0 else verify_rc,
+            "session_path": _session_path(repo_path, env),
             "seat_results": [seat_result],
             "agent_output": str(proc["output"])[-4000:],
             "verify": {"returncode": verify_rc, "output": verify_out[-4000:]},
@@ -195,6 +210,7 @@ def run_audit_lane(repo: str | Path, task: str, test_cmd: str, config: dict, tim
     else:
         allowed_artifacts = list(audit.get("allowed_report_paths") or [])
     env = _lane_env("audit", task, timeout, config)
+    session_path = _session_path(repo_path, env)
     scoped = {key: env[key] for key in ("LOOP_SESSION", "LOOP_ARCHIVE")}
     scoped.update(_seat_timeout_env(timeout, config))
 
@@ -247,6 +263,7 @@ def run_audit_lane(repo: str | Path, task: str, test_cmd: str, config: dict, tim
                     "status": "artifact_failed",
                     "lane": "audit",
                     "returncode": 2,
+                    "session_path": session_path,
                     "seat_results": seat_results,
                     "report_path": "",
                     "artifact_gate": pre_gate,
@@ -257,6 +274,7 @@ def run_audit_lane(repo: str | Path, task: str, test_cmd: str, config: dict, tim
                     "status": "artifact_failed",
                     "lane": "audit",
                     "returncode": 2,
+                    "session_path": session_path,
                     "seat_results": seat_results,
                     "report_path": "",
                     "artifact_gate": pre_gate,
@@ -276,6 +294,7 @@ def run_audit_lane(repo: str | Path, task: str, test_cmd: str, config: dict, tim
                     "status": "artifact_failed",
                     "lane": "audit",
                     "returncode": 2,
+                    "session_path": session_path,
                     "seat_results": seat_results,
                     "report_path": report_path,
                     "artifact_gate": artifact_gate,
@@ -294,6 +313,7 @@ def run_audit_lane(repo: str | Path, task: str, test_cmd: str, config: dict, tim
         "status": status,
         "lane": "audit",
         "returncode": returncode,
+        "session_path": session_path,
         "seat_results": seat_results,
         "report_path": report_path,
         "verify": {"returncode": verify_rc, "output": verify_out[-4000:]},
@@ -389,6 +409,7 @@ def run_plan_review_lane(repo: str | Path, task: str, test_cmd: str, config: dic
 
     plan_rel = plan_file.relative_to(repo_path).as_posix()
     env = _lane_env("plan-review", task, timeout, config)
+    session_path = _session_path(repo_path, env)
     scoped = {key: env[key] for key in ("LOOP_SESSION", "LOOP_ARCHIVE")}
     scoped.update(_seat_timeout_env(timeout, config))
     seat_results = []
@@ -454,6 +475,7 @@ def run_plan_review_lane(repo: str | Path, task: str, test_cmd: str, config: dic
             "lane": "plan_review",
             "returncode": 2,
             "rounds": 1,
+            "session_path": session_path,
             "seat_results": seat_results,
             "artifact_gate": gate,
             "unresolved_blockers": artifact_blockers,
@@ -465,6 +487,7 @@ def run_plan_review_lane(repo: str | Path, task: str, test_cmd: str, config: dic
             "lane": "plan_review",
             "returncode": 1,
             "rounds": 1,
+            "session_path": session_path,
             "seat_results": seat_results,
             "unresolved_blockers": [{"severity": "MEDIUM", "summary": "reviewer ERR; retry, fallback, or mark unavailable"}],
         }
@@ -474,6 +497,7 @@ def run_plan_review_lane(repo: str | Path, task: str, test_cmd: str, config: dic
             "lane": "plan_review",
             "returncode": 2,
             "rounds": 1,
+            "session_path": session_path,
             "seat_results": seat_results,
             "unresolved_blockers": blockers,
         }
@@ -482,6 +506,7 @@ def run_plan_review_lane(repo: str | Path, task: str, test_cmd: str, config: dic
         "lane": "plan_review",
         "returncode": 0,
         "rounds": 1,
+        "session_path": session_path,
         "seat_results": seat_results,
         "unresolved_blockers": [],
     }
@@ -512,9 +537,11 @@ def run_roundtable_lane(
             seats=roundtable.get("seats") or None,
             seat_models=config.get("seat_models", {}),
         )
+    session_path = _session_path(repo_path, env)
     return {
         "status": "ran",
         "lane": "roundtable",
         "returncode": rc,
-        "session_path": str(repo_path / ".roundtable" / "sessions" / env["LOOP_SESSION"]),
+        "session_path": session_path,
+        "roundtable_state": _read_roundtable_state(session_path),
     }
