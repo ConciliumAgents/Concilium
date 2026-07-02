@@ -4,6 +4,7 @@ from __future__ import annotations
 import importlib.util
 import os
 import pathlib
+import subprocess
 import tempfile
 import unittest
 from unittest import mock
@@ -55,9 +56,34 @@ class ConciliumLanesTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td, mock.patch.object(concilium_lanes.conductor, "run", return_value=0) as run:
             result = concilium_lanes.run_roundtable_lane(td, "Design the adapter.", "true", config, timeout=12)
 
-        self.assertEqual(result, {"status": "ran", "lane": "roundtable", "returncode": 0})
+        self.assertEqual(result["status"], "ran")
+        self.assertEqual(result["lane"], "roundtable")
+        self.assertEqual(result["returncode"], 0)
+        self.assertTrue(result["session_path"])
         run.assert_called_once()
         self.assertEqual(run.call_args.kwargs["seat_models"], config["seat_models"])
+
+    def test_roundtable_lane_returns_runtime_session_path(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo = pathlib.Path(td).resolve()
+            captured = {}
+
+            def fake_run(repo_arg, task_arg, **kwargs):
+                del repo_arg, task_arg, kwargs
+                captured["session"] = os.environ.get("LOOP_SESSION", "")
+                return 0
+
+            with mock.patch.object(concilium_lanes.conductor, "run", side_effect=fake_run):
+                result = concilium_lanes.run_roundtable_lane(
+                    repo,
+                    "Complex task.",
+                    "",
+                    {"lanes": {"roundtable": {"seats": ["claude", "hermes", "kimi"], "max_iters": 2}}},
+                    timeout=30,
+                )
+
+        self.assertTrue(captured["session"].startswith("roundtable-"))
+        self.assertEqual(result["session_path"], str(repo / ".roundtable" / "sessions" / captured["session"]))
 
     def test_fast_lane_roster_write_uses_fast_session_and_restores_environment(self):
         captured_env = {}
@@ -79,6 +105,13 @@ class ConciliumLanesTests(unittest.TestCase):
             self.assertNotIn("LOOP_ARCHIVE", os.environ)
 
         self.assertEqual(result["status"], "ran")
+        self.assertEqual(result["seat_results"], [{
+            "seat": "kimi",
+            "mode": "exec",
+            "backend_type": "external_cli",
+            "status": "invoked",
+            "rc": 0,
+        }])
         self.assertTrue(captured_env["LOOP_SESSION"].startswith("fast-"))
         self.assertEqual(captured_env["LOOP_SEAT_TIMEOUT"], "12")
         self.assertEqual(captured_env["LOOP_ARCHIVE"], "0")
@@ -137,6 +170,37 @@ class ConciliumLanesTests(unittest.TestCase):
         self.assertNotEqual(observed["loop_session"], "stale-session")
         self.assertTrue(observed["loop_session"].startswith("audit-"))
         self.assertEqual(observed["loop_seat_timeout"], "12")
+
+    def test_audit_lane_inner_gate_rejects_disallowed_seat_delta(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo = pathlib.Path(td)
+            subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+            def rogue_review(repo_arg, iteration, seat, mode, brief="", provider="", model=""):
+                del iteration, seat, mode, brief, provider, model
+                pathlib.Path(repo_arg, "unexpected.txt").write_text("bad\n", encoding="utf-8")
+                return 0, "VERDICT: PASS\n"
+
+            config = {
+                "lanes": {
+                    "audit": {
+                        "seats": ["claude"],
+                        "required_artifact_paths": ["docs/audits/report.md"],
+                        "allowed_write_paths": ["docs/audits/report.md"],
+                    }
+                },
+                "seat_models": {},
+            }
+
+            with mock.patch.object(concilium_lanes.process_runner, "run_process_group", side_effect=self._successful_process), \
+                    mock.patch.object(concilium_lanes.conductor, "write_roster", return_value=["claude"]), \
+                    mock.patch.object(concilium_lanes.conductor, "set_participants"), \
+                    mock.patch.object(concilium_lanes.conductor, "timed_run_seat", side_effect=rogue_review):
+                result = concilium_lanes.run_audit_lane(repo, "Read-only audit.", "", config, timeout=12)
+
+        self.assertEqual(result["status"], "artifact_failed")
+        self.assertEqual(result["returncode"], 2)
+        self.assertIn("unexpected.txt", result["artifact_gate"]["disallowed_delta"])
 
     def test_plan_review_lane_initializes_session_and_sets_actual_participants(self):
         with tempfile.TemporaryDirectory() as td:

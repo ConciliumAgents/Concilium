@@ -71,6 +71,65 @@ class RoundtableLauncherTests(unittest.TestCase):
             self.assertNotIn("conductor.py", " ".join(argv))
             self.assertNotIn("tui.py", " ".join(argv))
 
+    def test_service_subcommand_starts_local_service_entrypoint(self):
+        with tempfile.TemporaryDirectory() as td:
+            stub = pathlib.Path(td) / "python-stub"
+            capture = pathlib.Path(td) / "argv.json"
+            stub.write_text(
+                "#!/usr/bin/env python3\n"
+                "import json, os, sys\n"
+                "open(os.environ['CAPTURE_ARGV'], 'w', encoding='utf-8').write(json.dumps(sys.argv))\n",
+                encoding="utf-8",
+            )
+            stub.chmod(stub.stat().st_mode | stat.S_IXUSR)
+            env = dict(os.environ)
+            env["CONCILIUM_LAUNCHER_PYTHON"] = str(stub)
+            env["CAPTURE_ARGV"] = str(capture)
+
+            subprocess.run(
+                [str(LAUNCHER), "service", "--port", "8765"],
+                text=True,
+                capture_output=True,
+                env=env,
+                check=True,
+            )
+
+            argv = json.loads(capture.read_text(encoding="utf-8"))
+            joined = " ".join(argv)
+            self.assertIn("web/server.py", joined)
+            self.assertIn("--port", argv)
+            self.assertIn("8765", argv)
+            self.assertNotIn("concilium-run.py", joined)
+            self.assertNotIn("conductor.py", joined)
+
+    def test_web_subcommand_is_deprecated_alias_for_service(self):
+        with tempfile.TemporaryDirectory() as td:
+            stub = pathlib.Path(td) / "python-stub"
+            capture = pathlib.Path(td) / "argv.json"
+            stub.write_text(
+                "#!/usr/bin/env python3\n"
+                "import json, os, sys\n"
+                "open(os.environ['CAPTURE_ARGV'], 'w', encoding='utf-8').write(json.dumps(sys.argv))\n",
+                encoding="utf-8",
+            )
+            stub.chmod(stub.stat().st_mode | stat.S_IXUSR)
+            env = dict(os.environ)
+            env["CONCILIUM_LAUNCHER_PYTHON"] = str(stub)
+            env["CAPTURE_ARGV"] = str(capture)
+
+            proc = subprocess.run(
+                [str(LAUNCHER), "web", "--port", "8765"],
+                text=True,
+                capture_output=True,
+                env=env,
+                check=True,
+            )
+
+            argv = json.loads(capture.read_text(encoding="utf-8"))
+            self.assertIn("web/server.py", " ".join(argv))
+            self.assertIn("deprecated", proc.stderr.lower())
+            self.assertIn("service", proc.stderr.lower())
+
     def test_legacy_subcommand_keeps_old_conductor_path_explicit(self):
         with tempfile.TemporaryDirectory() as td:
             stub = pathlib.Path(td) / "python-stub"
@@ -90,7 +149,7 @@ class RoundtableLauncherTests(unittest.TestCase):
             env["CONCILIUM_LEGACY_VENV_PY"] = str(venv_stub)
             env["CAPTURE_ARGV"] = str(capture)
 
-            subprocess.run(
+            proc = subprocess.run(
                 [str(LAUNCHER), "legacy", "--repo", td, "--task", "legacy smoke"],
                 text=True,
                 capture_output=True,
@@ -98,6 +157,8 @@ class RoundtableLauncherTests(unittest.TestCase):
                 check=True,
             )
 
+            self.assertIn("deprecated", proc.stderr.lower())
+            self.assertIn("legacy", proc.stderr.lower())
             argv = json.loads(capture.read_text(encoding="utf-8"))
             self.assertIn("conductor.py", " ".join(argv))
 

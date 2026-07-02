@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# DEPRECATED: retained as a Phase 3 routing smoke. Use smoke-concilium-phase4.sh for the current service/runtime contract.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"

@@ -134,6 +134,7 @@ def run_review_lane(
     retries = 0
     final_rc = 1
     review_verdict = "ERR"
+    seat_results = []
 
     with scoped_loop_session(session):
         init_session(repo, task, test_cmd, env, timeout, [executor, reviewer], seat_models=seat_models)
@@ -142,6 +143,13 @@ def run_review_lane(
             brief = task if attempt == 0 else repair_brief(task, review_output)
             exec_rc, exec_out = run_seat(repo, executor, "exec", brief, env, timeout)
             calls += 1
+            seat_results.append({
+                "seat": executor,
+                "mode": "exec",
+                "backend_type": "external_cli",
+                "status": "invoked",
+                "rc": int(exec_rc),
+            })
             if exec_rc != 0:
                 final_rc = exec_rc
                 review_verdict = "ERR"
@@ -158,6 +166,14 @@ def run_review_lane(
             )
             calls += 1
             review_verdict = review_verdict_from_returncode(review_rc)
+            seat_results.append({
+                "seat": reviewer,
+                "mode": "review",
+                "backend_type": "external_cli",
+                "status": "invoked",
+                "rc": int(review_rc),
+                "verdict": review_verdict,
+            })
             final_rc = review_rc
             if review_verdict != "BLOCK":
                 break
@@ -171,6 +187,7 @@ def run_review_lane(
         "review_verdict": review_verdict,
         "retries": retries,
         "agent_calls": calls,
+        "seat_results": seat_results,
         "session_path": str(session_path(repo, session)),
     }
 

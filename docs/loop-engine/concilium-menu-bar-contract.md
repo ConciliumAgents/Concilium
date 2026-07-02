@@ -4,6 +4,8 @@ Phase 4 defines the service, client, and view-model contract for a future menu b
 
 The current browser panel is the Concilium Debug Console. It remains a local API smoke and raw-event surface, not the final product UI.
 
+The launcher should expose the localhost API as `roundtable service`. The old `roundtable web` wording is deprecated because the browser panel is only a Debug Console, not the product surface. Service startup should not open a browser unless the caller passes an explicit `--open`.
+
 ## Service Endpoints
 
 - `GET /api/status`

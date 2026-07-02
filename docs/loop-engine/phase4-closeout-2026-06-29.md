@@ -20,6 +20,8 @@ The tiny live Fast smoke was intentionally guard-skipped, not force-confirmed: t
 
 ## Evidence
 
+Current post-closeout unit count is higher than the original Phase 4 closeout table because later dogfood fixes added tests. Treat the table below as Phase 4 closeout evidence, not the current total test count.
+
 | Check | Result | Evidence |
 |---|---|---|
 | Unit suite | PASS: `Ran 145 tests OK` | `python3 -m unittest discover -s skills/loop-engine/tests` |
@@ -82,6 +84,7 @@ Redacted observed result on 2026-06-30:
 - The first real confirmed live Fast Lane run still needs a capacity-confirmed seat or explicit user confirmation.
 - Native menu bar lifecycle, launch, signing, and packaging are intentionally outside Phase 4.
 - Config save/setup UX is deferred, so project and user config writes remain manual or future Phase 5 work.
+- After the Phase 5 readiness self-audit, browser WebUI wording should be demoted to Debug Console/service language before native menu-bar work starts.
 
 ## Next Decision Trigger
 

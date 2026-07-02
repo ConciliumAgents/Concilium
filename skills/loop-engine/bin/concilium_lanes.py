@@ -148,11 +148,19 @@ def run_fast_lane(
         )
         verify_rc, verify_out = _run_shell(test_cmd, repo_path, timeout)
         agent_rc = int(proc["returncode"])
+        seat_result = {
+            "seat": agent,
+            "mode": "exec",
+            "backend_type": "external_cli",
+            "status": "invoked",
+            "rc": agent_rc,
+        }
         return {
             "status": "ran",
             "lane": "fast",
             "agent": agent,
             "returncode": agent_rc if agent_rc != 0 else verify_rc,
+            "seat_results": [seat_result],
             "agent_output": str(proc["output"])[-4000:],
             "verify": {"returncode": verify_rc, "output": verify_out[-4000:]},
         }
@@ -200,6 +208,7 @@ def run_audit_lane(repo: str | Path, task: str, test_cmd: str, config: dict, tim
         if refresh_rc != 0:
             raise RuntimeError(refresh_out.strip() or "kb-refresh.sh failed")
 
+        baseline_delta = concilium_artifacts.collect_delta(repo_path).get("delta_paths", [])
         seat_results = []
         for seat in seated:
             model_config = dict(config.get("seat_models", {}).get(seat, {}))
@@ -222,13 +231,14 @@ def run_audit_lane(repo: str | Path, task: str, test_cmd: str, config: dict, tim
 
         verify_rc, verify_out = _run_shell(test_cmd, repo_path, timeout)
         report_path = ""
+        artifact_gate = None
         if required_artifacts:
             strict_empty_allow_list = "allowed_write_paths" in audit and not allowed_artifacts
             pre_gate = concilium_artifacts.evaluate_artifact_gate(
                 repo_path,
                 required_artifact_paths=required_artifacts,
                 allowed_write_paths=allowed_artifacts,
-                baseline_delta_paths=concilium_artifacts.collect_delta(repo_path).get("delta_paths", []),
+                baseline_delta_paths=baseline_delta,
                 allow_unlisted_required=not strict_empty_allow_list,
                 allow_unlisted_delta=not strict_empty_allow_list,
             )
@@ -242,7 +252,35 @@ def run_audit_lane(repo: str | Path, task: str, test_cmd: str, config: dict, tim
                     "artifact_gate": pre_gate,
                     "verify": {"returncode": verify_rc, "output": verify_out[-4000:]},
                 }
+            if pre_gate.get("disallowed_delta"):
+                return {
+                    "status": "artifact_failed",
+                    "lane": "audit",
+                    "returncode": 2,
+                    "seat_results": seat_results,
+                    "report_path": "",
+                    "artifact_gate": pre_gate,
+                    "verify": {"returncode": verify_rc, "output": verify_out[-4000:]},
+                }
             report_path = _write_audit_report(repo_path, task, test_cmd, seat_results, verify_rc, verify_out, required_artifacts)
+            artifact_gate = concilium_artifacts.evaluate_artifact_gate(
+                repo_path,
+                required_artifact_paths=required_artifacts,
+                allowed_write_paths=allowed_artifacts,
+                baseline_delta_paths=baseline_delta,
+                allow_unlisted_required=not strict_empty_allow_list,
+                allow_unlisted_delta=not strict_empty_allow_list,
+            )
+            if artifact_gate.get("status") != "passed":
+                return {
+                    "status": "artifact_failed",
+                    "lane": "audit",
+                    "returncode": 2,
+                    "seat_results": seat_results,
+                    "report_path": report_path,
+                    "artifact_gate": artifact_gate,
+                    "verify": {"returncode": verify_rc, "output": verify_out[-4000:]},
+                }
         failing_rcs = [int(result["rc"]) for result in seat_results if int(result["rc"]) != 0]
         if any(rc not in (0, 2) for rc in failing_rcs):
             returncode = 1
@@ -259,6 +297,7 @@ def run_audit_lane(repo: str | Path, task: str, test_cmd: str, config: dict, tim
         "seat_results": seat_results,
         "report_path": report_path,
         "verify": {"returncode": verify_rc, "output": verify_out[-4000:]},
+        **({"artifact_gate": artifact_gate} if artifact_gate else {}),
     }
 
 
@@ -456,10 +495,14 @@ def run_roundtable_lane(
     timeout: int,
     reporter=None,
 ) -> dict:
+    repo_path = Path(repo).expanduser().resolve()
     roundtable = config.get("lanes", {}).get("roundtable", {})
-    with _scoped_env(_seat_timeout_env(timeout, config)):
+    env = _lane_env("roundtable", task, timeout, config)
+    scoped = {key: env[key] for key in ("LOOP_SESSION", "LOOP_ARCHIVE")}
+    scoped.update(_seat_timeout_env(timeout, config))
+    with _scoped_env(scoped):
         rc = conductor.run(
-            str(Path(repo).expanduser().resolve()),
+            str(repo_path),
             task,
             commander=roundtable.get("commander", "claude"),
             reviewer=roundtable.get("reviewer", ""),
@@ -469,4 +512,9 @@ def run_roundtable_lane(
             seats=roundtable.get("seats") or None,
             seat_models=config.get("seat_models", {}),
         )
-    return {"status": "ran", "lane": "roundtable", "returncode": rc}
+    return {
+        "status": "ran",
+        "lane": "roundtable",
+        "returncode": rc,
+        "session_path": str(repo_path / ".roundtable" / "sessions" / env["LOOP_SESSION"]),
+    }

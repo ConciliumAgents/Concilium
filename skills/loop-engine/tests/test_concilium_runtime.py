@@ -321,6 +321,46 @@ class ConciliumRuntimeAdapterTests(unittest.TestCase):
         self.assertEqual([event["provider"] for event in seat_events], ["fixture", "fixture", "fixture"])
         self.assertNotIn("codex", [event["seat"] for event in seat_events])
 
+    def test_live_fast_default_executor_emits_exec_seat_event(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo = pathlib.Path(td)
+            init_repo(repo)
+            sink = concilium_runtime.concilium_events.ListEventSink()
+            config = copy.deepcopy(BASE_CONFIG)
+            config["lanes"]["fast"]["default_single_agent"] = "kimi"
+
+            with mock.patch.object(
+                concilium_runtime.concilium_lanes.process_runner,
+                "run_process_group",
+                return_value={"returncode": 0, "output": "", "timed_out": False, "duration_seconds": 0.0},
+            ), mock.patch.object(
+                concilium_runtime.concilium_lanes.conductor,
+                "write_roster",
+                return_value=["kimi"],
+            ), mock.patch.object(
+                concilium_runtime.concilium_lanes.conductor,
+                "set_participants",
+            ):
+                result = concilium_runtime.run_concilium_adapter(
+                    {
+                        "repo": str(repo),
+                        "task": "Fix a typo in docs/readme.md.",
+                        "test_cmd": "true",
+                        "mode": "live_run",
+                        "signals": {"risk": "low", "file_count": 1, "security_sensitive": False, "ambiguous": False},
+                    },
+                    event_sink=sink,
+                    config=config,
+                    capacity=[capacity_record("kimi", "ok")],
+                )
+
+        self.assertEqual(result["route"]["lane"], "fast")
+        seat_events = [event for event in sink.events if event["type"] == "seat"]
+        self.assertEqual([event["seat"] for event in seat_events], ["kimi"])
+        self.assertEqual(seat_events[0]["backend_type"], "external_cli")
+        self.assertEqual(seat_events[0]["mode"], "exec")
+        self.assertEqual(seat_events[0]["status"], "invoked")
+
     def test_audit_defaults_do_not_include_codex_without_overlay(self):
         with tempfile.TemporaryDirectory() as td:
             result = concilium_runtime.build_preflight(
