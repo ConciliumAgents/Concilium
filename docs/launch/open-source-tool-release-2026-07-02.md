@@ -14,6 +14,12 @@ Release Concilium as an open-source developer tool preview, not as a product.
 
 Concilium coordinates real native agent seats, gates execution with budget/capacity checks, and leaves machine-readable run evidence.
 
+## Repository
+
+- Public name: `Concilium`
+- Intended URL: `https://github.com/liting0216/Concilium.git`
+- Do not publish the tool preview under the old `loop-engine` repository name.
+
 ## Do Not Claim
 
 - Finished product.

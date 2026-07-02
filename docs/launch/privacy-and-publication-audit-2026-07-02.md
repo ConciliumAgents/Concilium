@@ -2,9 +2,9 @@
 
 ## Conclusion
 
-Status: PASS WITH FIXES
+Status: PASS WITH REVIEW
 
-Concilium can continue toward an open-source developer-tool preview, but it is not ready for public launch until the required fixes below are closed. The current blocker class is publication readiness, not a discovered live-secret leak.
+Concilium can continue toward an open-source developer-tool preview. The previously required publication-readiness fixes have been closed in this branch. The remaining requirement is owner review before any public GitHub publish or push.
 
 ## Scope
 
@@ -17,19 +17,16 @@ Concilium can continue toward an open-source developer-tool preview, but it is n
 
 | Check | Result | Evidence |
 |---|---|---|
-| Secret/token scan | PASS WITH REVIEW | `rg` returned 789 broad matches, dominated by token plumbing, redaction tests, test fixtures, provider names, and plan/docs references. No high-confidence live credential was identified from reviewed output. |
+| Secret/token scan | PASS WITH REVIEW | Initial `rg` returned 789 broad matches; final post-README/community-file scan returned 808 broad matches. Matches are dominated by token plumbing, redaction tests, test fixtures, provider names, plan/docs references, and security warnings. No high-confidence live credential was identified from reviewed output. |
 | Private session artifact boundary | PASS | `git ls-files .roundtable` returned 0 tracked files. `.roundtable/sessions/**` remains excluded from launch collateral. |
-| Stale product/private-prototype wording | PASS WITH FIXES | `docs/loop-engine/agent-moa-positioning.md:22` and historical plan text still contain "private working prototype / not ready to publish". Task 2 must add the current-status supersession note before launch. |
-| GitHub community files | PASS WITH FIXES | `README.md`, `LICENSE`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, issue templates, and PR template are not present yet. Task 3 and Task 4 must create them. |
-| License readiness | PASS WITH FIXES | No `LICENSE` file exists yet. Task 3 must add the owner-approved license; Apache-2.0 remains the default recommendation unless the owner chooses MIT. |
+| Stale product/private-prototype wording | PASS | `docs/loop-engine/agent-moa-positioning.md` now carries a 2026-07-02 supersession note above the historical private-prototype wording. |
+| GitHub community files | PASS | `README.md`, `LICENSE`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, issue templates, and PR template are present. |
+| License readiness | PASS | `LICENSE` uses Apache-2.0 for the developer-tool preview. |
 
 ## Required Fixes Before Public Launch
 
-- Add the 2026-07-02 current-status supersession note to `docs/loop-engine/agent-moa-positioning.md`.
-- Add the public release boundary note to `docs/loop-engine/phase4-closeout-2026-06-29.md`.
-- Create the GitHub community profile files listed in the launch plan.
-- Create `README.md` with tool-preview positioning, dry-run quickstart, and Phase 5 product boundary.
-- Re-run the privacy scan after README/community files are added and before public launch.
+- Owner approval is required before creating, renaming, pushing to, or making public the GitHub repository at `https://github.com/liting0216/Concilium.git`.
+- Re-run the privacy scan after any new launch collateral or demo assets are added.
 
 ## Non-Blocking Follow-Ups
 
