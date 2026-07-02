@@ -229,6 +229,13 @@ class ConciliumRuntimeAccountingTests(unittest.TestCase):
 
 
 class ConciliumRuntimeAdapterTests(unittest.TestCase):
+    def test_launcher_info_records_git_branch_and_commit(self):
+        info = concilium_runtime._launcher_info()
+
+        self.assertEqual(info["repo"], str(ROOT))
+        self.assertTrue(info["branch"])
+        self.assertRegex(info["commit"], r"^[0-9a-f]{7,}$")
+
     def test_preview_builds_route_without_executor_call(self):
         with tempfile.TemporaryDirectory() as td:
             executor = mock.Mock(side_effect=AssertionError("executor must not run for preview"))
@@ -285,6 +292,51 @@ class ConciliumRuntimeAdapterTests(unittest.TestCase):
                 self.assertEqual(event["provider"], "fixture")
                 self.assertIn("model", event)
         executor.assert_not_called()
+
+    def test_guard_blocked_result_uses_block_product_status(self):
+        with tempfile.TemporaryDirectory() as td:
+            result = concilium_runtime.run_concilium_adapter(
+                {
+                    "repo": td,
+                    "task": "Read-only audit the architecture.",
+                    "mode": "live_run",
+                    "signals": {
+                        "risk": "high",
+                        "file_count": 9,
+                        "security_sensitive": False,
+                        "ambiguous": True,
+                        "read_only": True,
+                    },
+                },
+                config=BASE_CONFIG,
+                capacity=[capacity_record("claude", "ok")],
+            )
+
+        self.assertEqual(result["guard"]["status"], "blocked")
+        self.assertEqual(result["run_summary"]["final_verdict"], "block")
+        self.assertEqual(result["product_status"], "block")
+
+    def test_executor_exception_attaches_error_run_summary(self):
+        def executor(preview, effective):
+            del preview, effective
+            raise RuntimeError("boom")
+
+        with tempfile.TemporaryDirectory() as td:
+            result = concilium_runtime.run_concilium_adapter(
+                {
+                    "repo": td,
+                    "task": "Fix one typo in docs/readme.md.",
+                    "mode": "live_run",
+                    "signals": {"risk": "low", "file_count": 1, "security_sensitive": False, "ambiguous": False},
+                },
+                config=BASE_CONFIG,
+                capacity=[capacity_record("kimi", "ok")],
+                lane_executor=executor,
+            )
+
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result["run_summary"]["final_verdict"], "error")
+        self.assertEqual(result["product_status"], "error")
 
     def test_audit_stub_run_records_planned_external_cli_provenance(self):
         with tempfile.TemporaryDirectory() as td:

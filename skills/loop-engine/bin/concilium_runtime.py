@@ -4,6 +4,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -48,9 +49,35 @@ budget_guard = _load_local_module("_concilium_budget_guard", "budget_guard.py")
 
 
 def _launcher_info() -> dict:
+    repo = Path(__file__).resolve().parents[3]
+    branch = ""
+    commit = ""
+    try:
+        branch_proc = subprocess.run(
+            ["git", "-C", str(repo), "branch", "--show-current"],
+            text=True,
+            capture_output=True,
+            timeout=5,
+            check=False,
+        )
+        commit_proc = subprocess.run(
+            ["git", "-C", str(repo), "rev-parse", "--short", "HEAD"],
+            text=True,
+            capture_output=True,
+            timeout=5,
+            check=False,
+        )
+        if branch_proc.returncode == 0:
+            branch = branch_proc.stdout.strip()
+        if commit_proc.returncode == 0:
+            commit = commit_proc.stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        pass
     return {
-        "entrypoint": str(Path(__file__).resolve().parents[3] / "roundtable"),
-        "repo": str(Path(__file__).resolve().parents[3]),
+        "entrypoint": str(repo / "roundtable"),
+        "repo": str(repo),
+        "branch": branch,
+        "commit": commit,
     }
 
 
@@ -515,7 +542,7 @@ def run_concilium_adapter(
         result["returncode"] = 1
         result["error"] = capacity_status.redact(f"{type(error).__name__}: {error}")
         result["events"] = _events_from_sink(sink)
-        return result
+        return _attach_run_summary(result)
     if "seat_results" in execution_result:
         _emit_execution_seat_results(sink, preview, list(execution_result.get("seat_results") or []))
     execution_artifact_gate = execution_result.get("artifact_gate")

@@ -129,6 +129,8 @@ def final_verdict(result: dict, seats: list[dict]) -> tuple[str, list[str], list
     retry = [row["seat"] for row in seats if row.get("outcome") in {"quota_exhausted", "timeout", "error"}]
     if _as_dict(result.get("artifact_gate")).get("status") == "failed":
         return "artifact_failed", blocking, retry
+    if _as_dict(result.get("guard")).get("status") in {"blocked", "confirmation_required"}:
+        return "block", blocking, retry
     if blocking:
         return "block", blocking, retry
     if retry:
