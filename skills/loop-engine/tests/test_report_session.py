@@ -72,6 +72,30 @@ class ReportSessionTests(unittest.TestCase):
         self.assertIn("| Iter | Seat | Mode | Verdict | Duration(s) | Bytes | File |", report)
         self.assertIn("| 1 | kimi | exec | - | 12.345 |", report)
 
+    def test_report_prefers_run_summary_when_present(self):
+        with tempfile.TemporaryDirectory() as td:
+            session = pathlib.Path(td) / "audit-1"
+            (session / "KB").mkdir(parents=True)
+            (session / "minutes").mkdir(parents=True)
+            (session / "run-summary.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": "concilium.run_summary.v1",
+                        "final_verdict": "retry_required",
+                        "launcher": {"commit": "abc"},
+                        "seats": [{"seat": "kimi", "outcome": "quota_exhausted", "backend_type": "external_cli"}],
+                        "budget_guard": {"status": "allowed"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            report = report_session.build_report(session)
+
+        self.assertIn("Final verdict: retry_required", report)
+        self.assertIn("kimi", report)
+        self.assertIn("quota_exhausted", report)
+
 
 if __name__ == "__main__":
     unittest.main()

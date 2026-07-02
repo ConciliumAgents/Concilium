@@ -15,6 +15,15 @@ def read(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""
 
 
+def load_json(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(read(path))
+    except json.JSONDecodeError:
+        return {}
+
+
 def summarize_minutes(minutes_dir: Path, timings: list[dict] | None = None) -> list[dict]:
     timing_index = {
         (str(row.get("iter", "")), row.get("seat", ""), row.get("mode", "")): row
@@ -48,12 +57,8 @@ def build_report(session: Path) -> str:
     conclusion = read(kb / "conclusion.md").strip()
     task = read(kb / "task.md").strip()
     tests = read(kb / "test-results.txt").strip()
-    roundtable = {}
-    if (session / "roundtable.json").exists():
-        try:
-            roundtable = json.loads(read(session / "roundtable.json"))
-        except json.JSONDecodeError:
-            roundtable = {}
+    roundtable = load_json(session / "roundtable.json")
+    run_summary = load_json(session / "run-summary.json")
 
     rows = summarize_minutes(session / "minutes", roundtable.get("seat_timings", []))
     lines = [
@@ -62,7 +67,20 @@ def build_report(session: Path) -> str:
         "## Session",
         f"- Participants: {', '.join(roundtable.get('participants', [])) or 'unknown'}",
         f"- Iteration: {roundtable.get('iter', 'unknown')}",
+        f"- Final verdict: {run_summary.get('final_verdict', 'unknown') if run_summary else 'unknown'}",
+        f"- Budget Guard: {run_summary.get('budget_guard', {}).get('status', 'unknown') if run_summary else 'unknown'}",
         "",
+    ]
+    if run_summary.get("seats"):
+        lines += [
+            "## Run Summary Seats",
+            "| Seat | Outcome | Backend |",
+            "|---|---|---|",
+        ]
+        for seat in run_summary["seats"]:
+            lines.append(f"| {seat.get('seat', '')} | {seat.get('outcome', '')} | {seat.get('backend_type', '')} |")
+        lines.append("")
+    lines += [
         "## Conclusion",
         conclusion or "No conclusion.md found.",
         "",

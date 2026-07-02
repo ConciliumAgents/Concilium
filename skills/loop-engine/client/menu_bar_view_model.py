@@ -57,6 +57,7 @@ def build_popover_model(status: dict, effective_config: dict, preflight: dict, e
     route = _dict(preflight.get("route"))
     preflight_status = _dict(preflight.get("preflight"))
     guard = _dict(preflight.get("run_guard") or preflight.get("guard"))
+    run_summary = _dict(preflight.get("run_summary"))
     capacity = _dict_items(preflight.get("capacity"))
     latest_event = _latest_seat_event(events)
     latest_artifact_gate = _latest_event_of_type(events, "artifact_gate")
@@ -121,6 +122,8 @@ def build_popover_model(status: dict, effective_config: dict, preflight: dict, e
             "latest_event": latest_event.get("type", ""),
             "phase": latest_event.get("phase", ""),
             "artifact_gate": latest_artifact_gate.get("artifact_gate", {}),
+            "final_verdict": run_summary.get("final_verdict", ""),
+            "retry_required_seats": list(run_summary.get("retry_required_seats") or []),
             "elapsed_seconds": latest_event.get("elapsed_seconds", 0),
         },
         "debug_action": {"label": "Open Debug Console", "target": "webui"},
