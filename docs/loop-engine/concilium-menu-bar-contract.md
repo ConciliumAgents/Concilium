@@ -53,6 +53,8 @@ No token file is written unless the caller explicitly supplies `--token-file`.
 
 The menu bar shell owns lifecycle, presentation, and user intent only. Routing, capacity policy, maker-checker review, and execution stay in the Concilium service/runtime.
 
+The menu-bar product should treat `run-summary.json` as the durable status source for completed runs. Runtime events are the live stream; `run-summary.json` is the settled ledger.
+
 ## Seat Provenance
 
 Seat display names are not enough to explain quota usage. Runtime events and popover summaries should preserve:
