@@ -1,5 +1,7 @@
 # Agent MoA Positioning
 
+> Current status note (2026-07-02): the earlier "private working prototype" language is superseded for the Phase 4 open-source tool preview. Concilium may be published as a developer tool with CLI/local-service boundaries, but it should not be described as a finished product until Phase 5 front-end work is complete.
+
 Loop Engine is an Agent-level Mixture of Agents system.
 
 It does not only combine model outputs. It combines native agent shells: each seat keeps its own CLI, model routing, permissions, memory behavior, tool habits, timeout profile, and review style.

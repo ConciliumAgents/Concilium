@@ -4,6 +4,8 @@
 
 Phase 4 is complete. Concilium now has a routed live control plane: CLI, WebUI Debug Console, and the future menu bar client contract share the same runtime adapter, request fingerprint, Budget Guard, and event model.
 
+Public release boundary: this closeout supports an open-source developer-tool preview of Concilium's backend control plane. It does not support calling Concilium a finished product; Phase 5 front-end work remains the product threshold.
+
 The tiny live Fast smoke was intentionally guard-skipped, not force-confirmed: the selected Fast Lane seat was `kimi`, but its capacity source was `not_checked`, so the server-side guard returned `confirmation_required` before any live model call.
 
 ## What Phase 4 Added
