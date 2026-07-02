@@ -100,16 +100,25 @@ After merge or direct push to `main`, verify the public branch:
 git ls-remote https://github.com/ConciliumAgents/Concilium.git refs/heads/main
 ```
 
-For a stronger public check, verify the downloadable archive:
+Run tests from a clean clone so Git metadata is available:
+
+```bash
+tmpdir=$(mktemp -d)
+git clone --depth 1 https://github.com/ConciliumAgents/Concilium.git "$tmpdir/Concilium"
+cd "$tmpdir/Concilium"
+python3 -m unittest discover -s skills/loop-engine/tests -p 'test_*.py'
+```
+
+Then verify the downloadable archive for public content only. GitHub source archives do not include `.git` metadata, so tests that report branch or commit identity should be run from the clean clone above instead of from the tarball.
 
 ```bash
 tmpdir=$(mktemp -d)
 curl -fsSL https://github.com/ConciliumAgents/Concilium/archive/refs/heads/main.tar.gz -o "$tmpdir/concilium-main.tar.gz"
 tar -xzf "$tmpdir/concilium-main.tar.gz" -C "$tmpdir"
 cd "$tmpdir"/Concilium-main
-python3 -m unittest discover -s skills/loop-engine/tests -p 'test_*.py'
 rg -n --hidden --no-ignore --pcre2 "\p{Han}" . --glob '!.git' --glob '!.git/**' --glob '!.roundtable/**' --glob '!README.zh-CN.md'
 rg -n --hidden --no-ignore "/Users/"'melee'"|amazon-"'fba'"|fin"'ance'"|liting"'0216' . --glob '!.git' --glob '!.git/**' --glob '!.roundtable/**'
+rg -n --hidden --no-ignore 'sk-[A-Za-z0-9]{20,}|gho''_[A-Za-z0-9]{20,}|github''_pat_[A-Za-z0-9_]{20,}' . --glob '!.git' --glob '!.git/**' --glob '!.roundtable/**'
 ```
 
 ## Public Boundary
