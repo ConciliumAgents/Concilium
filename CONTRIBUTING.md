@@ -1,6 +1,6 @@
 # Contributing to Concilium
 
-Concilium is currently an open-source developer tool preview. Phase 5 front-end work is not part of this release unless an issue explicitly says so.
+Concilium is currently an open-source developer tool preview. The public contribution scope is the local CLI, local service, documentation, tests, and runtime reliability unless an issue explicitly says otherwise.
 
 ## Good First Contributions
 
