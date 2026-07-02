@@ -107,7 +107,7 @@ A localhost API/debug surface for inspecting status and running local workflows.
 | Understand the project | `README.md` |
 | Understand agent-level MoA | `docs/loop-engine/agent-moa-positioning.md` |
 | Learn seat input/output rules | `docs/loop-engine/seat-contract.md` |
-| Publish or update the public mirror | `docs/maintainers/public-release-workflow.md` |
+| Publish or update the public repository | `docs/RELEASE.md` |
 | Report a security issue | `SECURITY.md` |
 | Contribute a patch | `CONTRIBUTING.md` |
 

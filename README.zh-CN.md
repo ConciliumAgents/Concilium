@@ -109,7 +109,7 @@ Concilium 可以调用的本地 agent CLI，例如 Claude Code、Codex CLI、Her
 | 了解项目 | `README.md` / `README.zh-CN.md` |
 | 理解 agent-level MoA | `docs/loop-engine/agent-moa-positioning.md` |
 | 学习席位输入/输出规则 | `docs/loop-engine/seat-contract.md` |
-| 发布或更新 public mirror | `docs/maintainers/public-release-workflow.md` |
+| 发布或更新公开仓库 | `docs/RELEASE.md` |
 | 报告安全问题 | `SECURITY.md` |
 | 贡献 patch | `CONTRIBUTING.md` |
 
