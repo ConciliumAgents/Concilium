@@ -1199,6 +1199,8 @@ class ConciliumRuntimeAdapterTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "confirmation_required")
         self.assertEqual(result["guard"]["status"], "confirmation_required")
+        self.assertEqual(result["run_summary"]["final_verdict"], "block")
+        self.assertEqual(result["product_status"], "block")
         self.assertTrue(result["guard"]["confirmation_payload"]["request_fingerprint"])
         self.assertEqual([event["type"] for event in sink.events], ["start", "preflight", "guard", "finish", "done"])
         self.assertEqual(sink.events[-2]["rc"], 3)
