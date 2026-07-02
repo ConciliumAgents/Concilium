@@ -1,20 +1,22 @@
-# 当前进度（KB — 鲜活层）
+# Current Progress (Live KB)
 
-> 主持人每轮更新：做了什么、做了哪些决策、还有哪些开放问题。checkpoint.sh 会在此追加每轮小结。
-> 这是"会忘的 agent"与"不会忘的仓库"之间的桥——把活上下文落到这里，下一轮（或别的座位）才接得上。
+> The chair updates this each iteration with completed work, decisions, and open questions. `checkpoint.sh` appends iteration summaries here.
+> This file keeps active context available to future seats and later iterations.
 
-## 当前状态
+## Current State
 
-（一句话：现在循环跑到哪了）
+(One sentence describing where the loop is now.)
 
-## 已做决策（及理由）
+## Decisions Made And Why
 
-（关键选择，避免下一轮推翻）
+(Key choices that should not be reopened without new evidence.)
 
-## 开放问题 / 待验证
+## Open Questions / Verification Needed
 
-（还没解决、需要下一轮或某个座位处理的）
+(Unresolved issues that need another iteration or a specific seat.)
 
 ---
-## 迭代日志
-（checkpoint.sh 自动追加在下方）
+
+## Iteration Log
+
+(`checkpoint.sh` appends entries below.)

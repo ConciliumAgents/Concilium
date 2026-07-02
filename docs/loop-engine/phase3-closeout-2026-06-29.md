@@ -22,7 +22,7 @@ Phase 3 is complete. Concilium now has a tested local path for layered configura
 | Check | Result | Evidence Path |
 |---|---|---|
 | Unit tests | PASS: `Ran 79 tests in 2.515s OK` | `python3 -m unittest discover -s skills/loop-engine/tests` |
-| Roundtable smoke | PASS: `汇总: 7 通过, 0 失败` | `bash skills/loop-engine/bin/smoke-roundtable-speedup.sh` |
+| Roundtable smoke | PASS: `Summary: 7 passed, 0 failed` | `bash skills/loop-engine/bin/smoke-roundtable-speedup.sh` |
 | Phase 3 smoke | PASS: `Concilium Phase 3 smoke passed` | `bash skills/loop-engine/bin/smoke-concilium-phase3.sh` |
 | Dry benchmark | PASS: 5 tasks, Kimi/Review/Roundtable all `PASS`; router remains opt-in and default column is `-` | `/tmp/concilium-phase3-final-dry/summary.md` |
 | Whitespace check | PASS: no output | `git diff --check` |

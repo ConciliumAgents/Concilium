@@ -58,16 +58,16 @@ Allowed side effects: workspace file changes only. No deletion, spending, extern
 Required end section:
 
 ```markdown
-## 教训
-### 通用
-- （无）
-### <项目名>
-- （无）
+## Lessons
+### General
+- None.
+### <project>
+- None.
 ```
 
 Rules:
 
-- If there is no lesson, write `- （无）`.
+- If there is no lesson, write `- None.`.
 - If work is incomplete, state that directly in the minute output and `KB/state.md`.
 - Exit code `0` means the seat process completed. It does not mean the task is correct; review decides that.
 

@@ -1,16 +1,20 @@
-# 圆桌记忆索引（INDEX）
+# Roundtable Memory Index
 
-> 项目 → 主题两级。每行：`[显示名](相对路径) — YYYY-MM-DD · 一句话结论`。链接禁用 `[[]]`。
-> 本文件由 conductor 的 `archive_to_memory()` 在每次 PASS 归档后自动追加；也可人工编辑。
+> Two-level index: project -> topic. Each entry should use standard Markdown links only: `[display name](relative/path) - YYYY-MM-DD - one-sentence conclusion`.
+> `archive_to_memory()` appends here after PASS sessions. Manual edits are allowed when curating the archive.
 
 ## agents
-- （尚无归档）
+
+- No archived entries yet.
 
 ## amazon-fba
-- （尚无归档）
+
+- No archived entries yet.
 
 ## finance
-- （尚无归档）
+
+- No archived entries yet.
 
 ## _meta
-- （尚无归档）
+
+- No archived entries yet.

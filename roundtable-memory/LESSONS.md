@@ -1,22 +1,25 @@
-# 圆桌教训库（LESSONS）
+# Roundtable Lessons
 
-> 失败/协作教训库。开会召回：`## 通用铁律` 全量置顶 + 仅当前项目那一 `### <项目>` 节。
-> 写入：`archive_to_memory()` 抽各执行席纪要 `minutes/iter-*-*-exec.md` 末尾的 `## 教训` 节，
-> 按 `### 通用` / `### <项目>` 归位；同文本 SHA-256 去重。
-> 写入纪律：新增前先查同类，有则合并 / 标 `SUPERSEDED`，勿重复堆叠；前 10 轮后复查通用铁律条数（刻意小而收敛）。
+> Failure and collaboration lessons. During recall, load all general rules plus only the section for the current project.
+> `archive_to_memory()` extracts lesson sections from `minutes/iter-*-*-exec.md`, deduplicates by SHA-256, and writes them here.
+> Before adding a lesson, merge it with an existing similar lesson or mark the older one `SUPERSEDED`.
 
-## 通用铁律（每次开会全量置顶召回 · 刻意保持小而收敛）
-- 工具结果异常/有缺口时重读或明说，绝不脑补。（源：工具结果缺口导致脑补空转）
-- 综合席"已修"摘要每条正文必须真有，改完自 grep。（源：摘要↔正文断层）
-- 总指挥派活必须覆盖每个"该自证/发言"的座位。（源：设计会 kimi exec 缺席）
-- review-only 会的裁决标准应是"评审是否充分/blocker 是否查清"，不可是"文件是否完美 ready"——否则禁改+判 ready 结构性死锁、空转 CAP。（源：评审会 CAP）
-- participants 以实际在座为准，勿据硬编码默认派活给已下桌座位。（源：座位漂移 bug）
-- 改圆桌核心引擎这类大块代码活，该主持人（握全上下文、无超时）亲写；headless 座位有 LOOP_SEAT_TIMEOUT(600s) 硬超时，单轮啃不完会反复空转 CAP。（源：执行会 4 轮超时空转零产出）
-- 验证席被"只读/不跑副作用命令"约束时无法自跑测试；应 maker 跑测试写结果进黑板、checker 读结果裁决（maker≠checker 仍守）。（源：执行会验证张力）
-- 主持人派活/选验证席须基于各模型**实战画像**（非仅 roster 静态 strength）；异质复审优先、综合以深挖型为主 + 异质交叉验证。**→ 各座位具体画像（强弱项/坑/适合角色）见 `roundtable-memory/ROSTER-PROFILES.md`**。（源：圆桌提速 v4 + 座位画像）
-- 设计评审收敛到主要矛盾闭合即转实现、改审真代码 diff；纯审纸面 spec 会被无限细化边界（提速 v4 三轮 spec 评审 kimi 全 BLOCK，真代码出来反而双 PASS）。（源：圆桌提速 v4）
+## General Rules
 
-## 分项目教训（开会只召回当前项目这一节）
+- Re-read incomplete or suspicious tool results. Do not fill gaps from imagination.
+- Every "fixed" summary item must be backed by actual body text or evidence.
+- The chair must assign work to every seat that is expected to provide evidence.
+- Review-only meetings should judge whether review is sufficient and blockers are understood, not whether a file is globally perfect.
+- Participants must reflect seats that actually attended, not hard-coded defaults.
+- Large core engine changes should stay with the chair when headless seats are likely to timeout.
+- If a reviewer is read-only and cannot run side-effecting tests, the maker should run tests and write results to the blackboard; the reviewer then judges the evidence.
+- Seat assignment should use observed seat behavior, not only static roster strengths.
+- Move from paper-spec review to implementation once the main risks are closed; real diffs give reviewers better evidence than endlessly refined plans.
+
+## Project-Specific Lessons
+
 ### agents
+
 ### amazon-fba
+
 ### finance

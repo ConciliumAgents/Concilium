@@ -2,7 +2,11 @@
 
 Run real local AI agents as an auditable roundtable.
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 Concilium is a local developer tool for coordinating multiple agent CLIs. It does not ask one model to imitate a team. It routes work to actual local seats such as Claude Code, Codex CLI, Hermes, or Kimi when they are installed, then records what was requested, which lane ran, which seats participated, what checks ran, and how the run settled.
+
+[Quickstart](#quickstart) | [Core Concepts](#core-concepts) | [Safety](#safety-and-privacy) | [From Source](#from-source) | [Contributing](#contributing)
 
 ## Why
 
@@ -15,7 +19,7 @@ Single-agent workflows are fast, but they can be hard to trust on larger changes
 
 Concilium treats agent work as an operation that needs routing, capacity checks, execution boundaries, and evidence. The goal is simple: before you trust the result, you should be able to see how it was produced.
 
-## What It Does
+## Highlights
 
 - Detects locally available agent seats.
 - Routes work through lanes such as fast execution, review, audit, plan review, and roundtable review.
@@ -39,6 +43,12 @@ The top-level `roundtable` launcher is the main CLI entrypoint. Most runtime cod
 
 ## Quickstart
 
+Prerequisites:
+
+- Python 3.11 or newer.
+- `git` and `ripgrep`.
+- At least one supported local agent CLI if you want live runs.
+
 ```bash
 git clone https://github.com/ConciliumAgents/Concilium.git
 cd Concilium
@@ -56,6 +66,15 @@ python3 skills/loop-engine/bin/concilium-run.py \
 ```
 
 The quickstart uses dry-run commands first. Commands that run live seats may consume provider quota or depend on your local agent subscriptions.
+
+## CLI Quick Reference
+
+```bash
+./roundtable --version          # Show launcher, repository, branch, and commit.
+./roundtable --doctor           # Detect available local seats.
+./roundtable --task "..."       # Run a routed Concilium task.
+./roundtable service --no-open  # Start the local service/API without opening a browser.
+```
 
 ## Core Concepts
 
@@ -78,6 +97,17 @@ A machine-readable record of the run result. For completed runs, `run-summary.js
 **Local Service**
 
 A localhost API/debug surface for inspecting status and running local workflows. It is not a hosted service.
+
+## Docs By Goal
+
+| Goal | Start Here |
+|---|---|
+| Understand the project | `README.md` |
+| Understand agent-level MoA | `docs/loop-engine/agent-moa-positioning.md` |
+| Learn seat input/output rules | `docs/loop-engine/seat-contract.md` |
+| Publish or update the public mirror | `docs/maintainers/public-release-workflow.md` |
+| Report a security issue | `SECURITY.md` |
+| Contribute a patch | `CONTRIBUTING.md` |
 
 ## Supported Agents
 
@@ -106,7 +136,7 @@ Concilium is usable as a developer preview for local CLI and service workflows. 
 
 The current focus is reliability, clear execution boundaries, reproducible local setup, and public examples that are safe to run.
 
-## Development
+## From Source
 
 Run the test suite:
 
@@ -120,6 +150,12 @@ git diff --check
 Bug reports, documentation fixes, reproducible setup notes, and small runtime patches are welcome. See `CONTRIBUTING.md` before opening a pull request.
 
 For security-sensitive issues or accidental secret exposure, follow `SECURITY.md` and do not open a public issue containing private logs or credentials.
+
+## Community
+
+- Open an issue for reproducible bugs or documentation gaps.
+- Keep setup/support questions sanitized: no raw transcripts, provider tokens, local account data, or private memory.
+- Pull requests should include the command output or evidence used to verify the change.
 
 ## License
 

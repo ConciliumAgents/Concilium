@@ -1,26 +1,29 @@
-# 座位实战画像（ROSTER-PROFILES）
+# Seat Field Profiles
 
-> ⚠ 画像基于少量实战，是**当前倾向**非永久标签；随新证据手工更新。
-> 这是**项目/环境级观察**：连接类失效（如 codex）是环境瞬态，带日期/环境限定，勿当模型永久属性。
-> 维护：散会后由人工/主持人更新对应座位节（见各节「更新于」）。出厂特长不在此重复（见 `roster-detect.py` / roster.md 工厂层）。
-> 用途：`write_roster()` 把各节合并进 `KB/roster.md`，主持人 plan 时据此选席派活。
+> These profiles are based on limited local evidence. Treat them as current tendencies, not permanent model labels.
+> Environment failures, such as a CLI being unreachable, are date- and machine-specific observations.
+> The chair may merge these profiles into `KB/roster.md` during planning.
 
-## claude (Opus, Anthropic) · 更新于 2026-06-28
-- 表现：握全上下文、规划/综合强；**不适合 exec**——headless 大任务易撞 600s 超时空转（提速执行会 5 轮 claude-exec 全 0 字节）。
-- 适合角色：总指挥(plan) + 验证席(review，纯脑只读、不超时)。
-- 坑：大块核心代码走主对话「主持人带外亲写」（无超时），勿进圆桌 exec 座位。
+## claude (Anthropic)
 
-## hermes (DeepSeek, 异质) · 更新于 2026-06-28
-- 表现：执行快、有产出；**主观"是否充分"的复审偏宽松**（曾"修复成立"即放行），但**硬事实/代码核对很严**（曾逮出 kimi 画像的 600s 事实错误）。（样本少，当前倾向）
-- 适合角色：执行席；异质复审（与深挖型 kimi 交叉验证）。
-- 坑：纯主观充分性判断可能放过深层边界 → 综合时配深挖型交叉。
+- Observed strengths: high-context planning, synthesis, and review.
+- Best role: chair, planner, final synthesis, and read-only reviewer.
+- Watch out: large headless execution tasks can timeout; keep high-context core edits in the main chair conversation when needed.
 
-## kimi (K2.7, Moonshot, 异质) · 更新于 2026-06-28
-- 表现：深挖未覆盖边界的能力强（多轮 spec 评审屡中）、快、能扛大活（单纪要曾 173KB）。（样本少，当前倾向）
-- 适合角色：严格验证席、核心执行、异质复审。
-- 坑：headless 输出冗长（thinking 外泄）；**圆桌内受 `LOOP_SEAT_TIMEOUT`=600s 约束，大活接近该线会被 rc=124 截断**（脱离圆桌直调无此超时）。
+## hermes (NousResearch)
 
-## codex (GPT, OpenAI) · 更新于 2026-06-28
-- 表现：**截至 2026-06-28 本环境探测 chatgpt.com 后端 `websocket tls handshake eof`、连接失败、暂不可用**（环境瞬态，非永久属性，复测可更新）。
-- 适合角色：（连通后）代码验证；当前已入 EXEC_EXCLUDE 仅验证、不执行。
-- 坑：不可用时勿派活；恢复连通后复测并更新本节。
+- Observed strengths: fast execution, broad tool use, and provider flexibility.
+- Best role: executor, environment checker, and heterogeneous reviewer.
+- Watch out: subjective sufficiency reviews should be cross-checked on high-risk work.
+
+## kimi (Moonshot)
+
+- Observed strengths: strict boundary review, implementation, and independent reasoning.
+- Best role: strict reviewer, core executor, and heterogeneous cross-checker.
+- Watch out: long headless output can approach seat timeout budgets on large tasks.
+
+## codex (OpenAI)
+
+- Observed strengths: code review, issue finding, and focused implementation when reachable.
+- Best role: additional code verifier.
+- Watch out: if the local CLI or backend is unreachable, remove it from the active roster for that run.

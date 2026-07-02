@@ -1,20 +1,20 @@
-# 本轮任务与验收标准（KB）
+# Current Task And Acceptance Criteria (KB)
 
-> 受邀 agent 读这里来知道"要干什么、怎么算完成"。主持人保持它与当前目标一致。
+> Invited agents read this file to understand what to do and how completion will be judged. The chair keeps it aligned with the current goal.
 
-## 目标
+## Goal
 
-（要解决的问题 / 要实现的功能，一句话）
+(The problem to solve or feature to implement, in one sentence.)
 
-## 验收标准（可验证）
+## Acceptance Criteria (Verifiable)
 
-- [ ] 标准 1：……（如何检查）
-- [ ] 标准 2：……（如何检查）
+- [ ] Criterion 1: ... (how to check it)
+- [ ] Criterion 2: ... (how to check it)
 
-## 约束 / 不要做
+## Constraints / Do Not Do
 
-（边界、YAGNI、不许碰的东西）
+(Boundaries, YAGNI rules, and files or operations that must not be touched.)
 
-## 验证方式
+## Verification
 
-（测试命令、构建命令；填到 LOOP_TEST_CMD 可由 kb-refresh 自动跑）
+(Test or build commands. Put the runnable command in `LOOP_TEST_CMD` when `kb-refresh.sh` should execute it.)

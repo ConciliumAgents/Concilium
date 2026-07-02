@@ -1,20 +1,20 @@
-# 项目背景（KB — 稳定层）
+# Project Context (Stable KB)
 
-> 这是圆桌会议的共享知识库。任何受邀的 agent（codex / hermes / 其它）都会**自行读取**本文件来理解项目。
-> 主持人（Claude）负责把项目背景写到这里，并在结构变化时更新——**不要把背景只留在对话里，黑板才是共享真相**。
+> This is the shared knowledge base for the roundtable. Invited agents read this file to understand the project.
+> The chair keeps this file current when the project structure changes. Do not leave essential context only in chat.
 
-## 这是什么项目
+## What This Project Is
 
-（一句话说明项目目标与领域）
+(One sentence describing the project goal and domain.)
 
-## 架构图 / 关键模块
+## Architecture / Key Modules
 
-（目录结构、关键文件、模块职责。给出"看哪个文件能理解什么"的地图）
+(Directory map, important files, module responsibilities, and where to look for each concept.)
 
-## 约定与风格
+## Conventions And Style
 
-（语言、框架、命名/格式约定、测试方式、不可触碰的部分）
+(Language, framework, naming, formatting, test commands, and areas that must not be touched.)
 
-## 外部依赖与边界
+## External Dependencies And Boundaries
 
-（依赖、环境变量、外部服务；哪些操作属于高风险/需人工确认）
+(Dependencies, environment variables, external services, and operations that require human approval.)
