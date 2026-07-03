@@ -23,7 +23,8 @@ class ConciliumConfigTests(unittest.TestCase):
 
     def test_default_config_gives_claude_and_codex_longer_review_budget(self):
         with tempfile.TemporaryDirectory() as td:
-            config = concilium_config.load_config(td)
+            root = pathlib.Path(td)
+            config = concilium_config.load_config(root, user_config=root / "__no_such_user_config__.json")
 
         seat_modes = config["timeouts"]["seat_mode_seconds"]
         self.assertEqual(seat_modes["claude"]["plan"], 600)
@@ -33,7 +34,8 @@ class ConciliumConfigTests(unittest.TestCase):
 
     def test_default_audit_and_plan_review_seats_are_native_and_heterogeneous(self):
         with tempfile.TemporaryDirectory() as td:
-            config = concilium_config.load_config(td)
+            root = pathlib.Path(td)
+            config = concilium_config.load_config(root, user_config=root / "__no_such_user_config__.json")
 
         self.assertEqual(config["lanes"]["audit"]["default_reviewer"], "claude")
         self.assertEqual(config["lanes"]["audit"]["seats"], ["claude", "hermes", "kimi"])
