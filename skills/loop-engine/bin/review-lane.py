@@ -77,10 +77,12 @@ def init_session(
     timeout: int,
     seats: list[str],
     seat_models: dict | None = None,
+    memory_config: dict | None = None,
 ) -> None:
     rc, out = run_cmd([str(BIN / "roundtable-init.sh"), str(repo), task], BIN, env, timeout)
     if rc != 0:
         raise RuntimeError(out.strip() or "roundtable-init.sh failed")
+    conductor.import_memory(str(Path(repo).expanduser().resolve()), memory_config=dict(memory_config or {}))
     seated = filter_available_seats(seats, conductor.write_roster(str(repo), seats=seats, seat_models=seat_models or {}))
     conductor.set_participants(repo, seated)
     refresh_kb(repo, test_cmd, env, timeout)
@@ -124,6 +126,7 @@ def run_review_lane(
     timeout: int = 300,
     session: str = "",
     seat_models: dict | None = None,
+    memory_config: dict | None = None,
 ) -> dict:
     if executor == reviewer:
         raise ValueError("Review Lane requires distinct executor and reviewer")
@@ -137,7 +140,16 @@ def run_review_lane(
     seat_results = []
 
     with scoped_loop_session(session):
-        init_session(repo, task, test_cmd, env, timeout, [executor, reviewer], seat_models=seat_models)
+        init_session(
+            repo,
+            task,
+            test_cmd,
+            env,
+            timeout,
+            [executor, reviewer],
+            seat_models=seat_models,
+            memory_config=memory_config,
+        )
         for attempt in range(repair_limit + 1):
             set_iteration(repo, attempt + 1)
             brief = task if attempt == 0 else repair_brief(task, review_output)

@@ -134,6 +134,20 @@ Concilium treats run evidence as local and sensitive by default.
 - Prefer dry-run or review-only workflows before live execution on a new machine.
 - Review generated artifacts before sharing them in public issues, pull requests, or demos.
 
+### Private Local Context
+
+Concilium can read private local context from user-configured directories through `~/.config/concilium/config.json`. These paths are never bundled with the public repository. Keep credentials, `.env` files, provider logs, and raw transcripts outside these directories unless you intentionally want agents to read them.
+
+Example:
+
+```json
+{
+  "memory": {
+    "private_context_dirs": ["/home/example/concilium-private-overlay/memory"]
+  }
+}
+```
+
 ## Project Status
 
 Concilium is usable as a developer preview for local CLI and service workflows. It is intentionally not presented as a hosted platform or polished end-user app.

@@ -15,6 +15,12 @@ REDACTED = "[REDACTED]"
 RISK_POSTURES = {"speed-first", "balanced", "review-first"}
 SENSITIVE_KEY_RE = re.compile(r"(api[_-]?key|token|secret|password|cookie|credential)", re.I)
 SECRET_VALUE_RE = re.compile(r"\b(?:sk-[A-Za-z0-9_-]+|[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)\b")
+USER_ONLY_MEMORY_KEYS = {
+    "private_context_dirs",
+    "private_context_max_file_bytes",
+    "private_context_max_total_bytes",
+    "private_archive_dir",
+}
 
 
 def default_config_path() -> Path:
@@ -48,6 +54,15 @@ def deep_merge(base: dict, override: dict) -> dict:
     return result
 
 
+def strip_project_only_memory(project_config: dict) -> dict:
+    sanitized = copy.deepcopy(project_config)
+    memory = sanitized.get("memory")
+    if isinstance(memory, dict):
+        for key in USER_ONLY_MEMORY_KEYS:
+            memory.pop(key, None)
+    return sanitized
+
+
 def validate_config(config: dict) -> None:
     lanes = config.get("lanes", {})
     review = lanes.get("review", {})
@@ -78,6 +93,22 @@ def validate_config(config: dict) -> None:
         for mode, seconds in modes.items():
             if not isinstance(seconds, (int, float)) or seconds <= 0:
                 raise ValueError(f"timeout override for {seat}.{mode} must be positive")
+
+    memory = config.get("memory", {})
+    if not isinstance(memory, dict):
+        raise ValueError("memory must be an object")
+    dirs = memory.get("private_context_dirs", [])
+    if not isinstance(dirs, list) or not all(isinstance(item, str) for item in dirs):
+        raise ValueError("memory.private_context_dirs must be a list of strings")
+    max_file = memory.get("private_context_max_file_bytes", 20000)
+    max_total = memory.get("private_context_max_total_bytes", 200000)
+    private_archive_dir = memory.get("private_archive_dir", "")
+    if not isinstance(max_file, int) or max_file <= 0:
+        raise ValueError("memory.private_context_max_file_bytes must be a positive integer")
+    if not isinstance(max_total, int) or max_total <= 0:
+        raise ValueError("memory.private_context_max_total_bytes must be a positive integer")
+    if not isinstance(private_archive_dir, str):
+        raise ValueError("memory.private_archive_dir must be a string")
 
 
 def _redact_value(value):
@@ -110,8 +141,10 @@ def load_config(
     project_path = project_config_path(repo)
 
     config = load_json(defaults_path)
-    config = deep_merge(config, load_json(user_path))
-    config = deep_merge(config, load_json(project_path))
+    user_config_data = load_json(user_path)
+    project_config_data = strip_project_only_memory(load_json(project_path))
+    config = deep_merge(config, user_config_data)
+    config = deep_merge(config, project_config_data)
     validate_config(config)
     return config
 

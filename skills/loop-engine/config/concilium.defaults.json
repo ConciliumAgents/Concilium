@@ -48,6 +48,12 @@
       }
     }
   },
+  "memory": {
+    "private_context_dirs": [],
+    "private_context_max_file_bytes": 20000,
+    "private_context_max_total_bytes": 200000,
+    "private_archive_dir": ""
+  },
   "privacy": {
     "redact_account_identifiers": true,
     "redact_credentials": true

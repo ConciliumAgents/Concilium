@@ -350,8 +350,42 @@ def _claude_project_memory(repo: str) -> Path:
     return Path.home() / ".claude" / "projects" / mapped / "memory"
 
 
-def import_memory(repo: str) -> int:
+def _private_context_files(
+    dirs: list[str],
+    max_file_bytes: int = 20000,
+    max_total_bytes: int = 200000,
+) -> tuple[list[tuple[str, str]], bool]:
+    files: list[tuple[str, str]] = []
+    total = 0
+    truncated = False
+    for raw_dir in dirs:
+        root = Path(raw_dir).expanduser().resolve()
+        if not root.is_dir():
+            continue
+        for path in sorted(root.rglob("*.md")):
+            try:
+                data = path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            if len(data.encode("utf-8")) > max_file_bytes:
+                data = data.encode("utf-8")[:max_file_bytes].decode("utf-8", errors="replace")
+            encoded_len = len(data.encode("utf-8"))
+            if total + encoded_len > max_total_bytes:
+                truncated = True
+                return files, truncated
+            total += encoded_len
+            label = f"{root.name}/{path.relative_to(root).as_posix()}"
+            files.append((label, data))
+    return files, truncated
+
+
+def import_memory(
+    repo: str,
+    private_context_dirs: list[str] | None = None,
+    memory_config: dict | None = None,
+) -> int:
     """Import external project memory into KB/imported-memory.md for all seats."""
+    memory_config = memory_config or {}
     parts = [
         "# Imported Project Memory",
         "",
@@ -392,6 +426,20 @@ def import_memory(repo: str) -> int:
             parts += rt_parts; n += rt_n
         except Exception:
             pass
+    private_dirs = list(private_context_dirs or memory_config.get("private_context_dirs") or [])
+    if private_dirs:
+        max_file = int(memory_config.get("private_context_max_file_bytes", 20000))
+        max_total = int(memory_config.get("private_context_max_total_bytes", 200000))
+        files, truncated = _private_context_files(private_dirs, max_file, max_total)
+        for label, text in files:
+            parts += [f"## Private context - {label}", text, ""]
+        if truncated:
+            parts += [
+                "## Private context truncated",
+                "Private context import stopped at configured total byte limit.",
+                "",
+            ]
+        n += len(files)
     try:
         out_path = session_dir(repo) / "KB" / "imported-memory.md"
         out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -495,14 +543,27 @@ def write_conclusion(repo: str, task: str, status: str, rounds: int, verdicts: l
         pass
 
 
-def archive_to_memory(repo: str, task: str, status: str, rounds: int, verdicts: list) -> None:
+def archive_to_memory(
+    repo: str,
+    task: str,
+    status: str,
+    rounds: int,
+    verdicts: list,
+    memory_config: dict | None = None,
+) -> None:
     """Archive completed outcomes and lessons into repo-local roundtable-memory/."""
     if os.environ.get("LOOP_ARCHIVE", "1") != "1":
         return
     try:
-        root = Path(repo) / "roundtable-memory"
-        if not root.is_dir():
-            return
+        memory_config = memory_config or {}
+        private_archive_dir = str(memory_config.get("private_archive_dir") or "").strip()
+        if private_archive_dir:
+            root = Path(private_archive_dir).expanduser().resolve()
+            root.mkdir(parents=True, exist_ok=True)
+        else:
+            root = Path(repo) / "roundtable-memory"
+            if not root.is_dir():
+                return
         project = os.environ.get("LOOP_ARCHIVE_PROJECT") or Path(repo).name
         sid = os.environ.get("LOOP_SESSION", "")
         sd = session_dir(repo)
@@ -779,6 +840,7 @@ def _run_read_only_audit(
     seat_models: dict,
     required_artifact_paths: list[str] | None,
     allowed_write_paths: list[str] | None,
+    memory_config: dict | None = None,
 ) -> int:
     del max_iters
 
@@ -794,7 +856,7 @@ def _run_read_only_audit(
         reporter.finish("ERR", 0)
         return 1
 
-    nimp = import_memory(repo)
+    nimp = import_memory(repo, memory_config=memory_config) if memory_config else import_memory(repo)
     if nimp:
         reporter.log(f"[loop-engine] memory bridge: imported {nimp} external project memory sources into KB")
     _, o = sh_capture("kb-refresh.sh", repo, test_cmd)
@@ -847,7 +909,8 @@ def _run_read_only_audit(
 # ---------------- Main loop (rendering-independent) ----------------
 def run(repo, task, commander="claude", reviewer="", max_iters=5, test_cmd="",
         reporter=None, seats=None, seat_models=None, audit_only=False,
-        required_artifact_paths=None, allowed_write_paths=None) -> int:
+        required_artifact_paths=None, allowed_write_paths=None,
+        memory_config=None) -> int:
     reporter = reporter or TextReporter()
     repo = str(Path(repo).expanduser().resolve())
     seat_models = seat_models or {}
@@ -877,6 +940,7 @@ def run(repo, task, commander="claude", reviewer="", max_iters=5, test_cmd="",
             seat_models,
             split_path_list(required_artifact_paths),
             split_path_list(allowed_write_paths),
+            memory_config=memory_config,
         )
     # Resolve reviewer dynamically; executors are seated seats minus slow seats and reviewer.
     reviewer = _resolve_reviewer(seated, reviewer)
@@ -897,7 +961,7 @@ def run(repo, task, commander="claude", reviewer="", max_iters=5, test_cmd="",
         write_conclusion(repo, task, "CAP", 0, [])
         reporter.finish("CAP", 0)
         return 2
-    nimp = import_memory(repo)
+    nimp = import_memory(repo, memory_config=memory_config) if memory_config else import_memory(repo)
     if nimp:
         reporter.log(f"[loop-engine] memory bridge: imported {nimp} external project memory sources into KB")
     _, o = sh_capture("kb-refresh.sh", repo, test_cmd); reporter.log(o)
@@ -977,7 +1041,10 @@ def run(repo, task, commander="claude", reviewer="", max_iters=5, test_cmd="",
 
     status = status or "CAP"
     write_conclusion(repo, task, status, final_it, verdicts)
-    archive_to_memory(repo, task, status, final_it, verdicts)  # Archive into repo-local roundtable-memory/.
+    if memory_config:
+        archive_to_memory(repo, task, status, final_it, verdicts, memory_config=memory_config)
+    else:
+        archive_to_memory(repo, task, status, final_it, verdicts)
     reporter.finish(status, final_it)
     return {"PASS": 0, "ERR": 1, "CAP": 2}[status]
 

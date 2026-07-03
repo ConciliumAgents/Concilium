@@ -129,6 +129,11 @@ def collect_capacity(repo: str | Path, config: dict) -> list[dict]:
     return capacity_status.collect_capacity_from_roster(detected, config)
 
 
+def _import_session_memory(repo: str | Path, config: dict) -> None:
+    memory_config = dict((config or {}).get("memory") or {})
+    conductor.import_memory(str(Path(repo).expanduser().resolve()), memory_config=memory_config)
+
+
 def run_fast_lane(
     repo: str | Path,
     task: str,
@@ -147,6 +152,7 @@ def run_fast_lane(
         rc, out = _run_bin([str(BIN / "roundtable-init.sh"), str(repo_path), task], env, timeout)
         if rc != 0:
             raise RuntimeError(out.strip() or "roundtable-init.sh failed")
+        _import_session_memory(repo_path, timeout_config or {})
         seated = _filter_available_seats([agent], conductor.write_roster(str(repo_path), seats=[agent], seat_models=seat_models or {}))
         conductor.set_participants(str(repo_path), seated)
         refresh_rc, refresh_out = _run_bin([str(BIN / "kb-refresh.sh"), str(repo_path), test_cmd], env, timeout)
@@ -193,6 +199,7 @@ def run_review_lane(repo: str | Path, task: str, test_cmd: str, config: dict, ti
             repair_limit=int(review.get("review_repair_limit", 1)),
             timeout=timeout,
             seat_models=config.get("seat_models", {}),
+            memory_config=dict(config.get("memory") or {}),
         )
     result = dict(result)
     result["status"] = "ran"
@@ -218,6 +225,7 @@ def run_audit_lane(repo: str | Path, task: str, test_cmd: str, config: dict, tim
         rc, out = _run_bin([str(BIN / "roundtable-init.sh"), str(repo_path), task], env, timeout)
         if rc != 0:
             raise RuntimeError(out.strip() or "roundtable-init.sh failed")
+        _import_session_memory(repo_path, config)
         seated = _filter_available_seats(seats, conductor.write_roster(str(repo_path), seats=seats, seat_models=config.get("seat_models", {})))
         conductor.set_participants(str(repo_path), seated)
         refresh_rc, refresh_out = _run_bin([str(BIN / "kb-refresh.sh"), str(repo_path), test_cmd], env, timeout)
@@ -418,6 +426,7 @@ def run_plan_review_lane(repo: str | Path, task: str, test_cmd: str, config: dic
         rc, out = _run_bin([str(BIN / "roundtable-init.sh"), str(repo_path), task], env, timeout)
         if rc != 0:
             raise RuntimeError(out.strip() or "roundtable-init.sh failed")
+        _import_session_memory(repo_path, config)
         seated = _filter_available_seats(seats, conductor.write_roster(str(repo_path), seats=seats, seat_models=config.get("seat_models", {})))
         conductor.set_participants(str(repo_path), seated)
         refresh_rc, refresh_out = _run_bin([str(BIN / "kb-refresh.sh"), str(repo_path), ""], env, timeout)
@@ -525,6 +534,9 @@ def run_roundtable_lane(
     env = _lane_env("roundtable", task, timeout, config)
     scoped = {key: env[key] for key in ("LOOP_SESSION", "LOOP_ARCHIVE")}
     scoped.update(_seat_timeout_env(timeout, config))
+    memory_config = dict(config.get("memory") or {})
+    if memory_config.get("private_archive_dir"):
+        scoped["LOOP_ARCHIVE"] = "1"
     with _scoped_env(scoped):
         rc = conductor.run(
             str(repo_path),
@@ -536,6 +548,7 @@ def run_roundtable_lane(
             reporter=reporter,
             seats=roundtable.get("seats") or None,
             seat_models=config.get("seat_models", {}),
+            memory_config=memory_config,
         )
     session_path = _session_path(repo_path, env)
     return {

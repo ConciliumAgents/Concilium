@@ -136,6 +136,20 @@ Concilium 默认把运行证据视为本地且敏感的数据。
 - 在新机器上运行真实执行前，优先使用 dry-run 或 review-only 工作流。
 - 在公开 issue、pull request 或 demo 中分享生成产物前，请先人工复查。
 
+### 私有本地上下文
+
+Concilium 可以通过 `~/.config/concilium/config.json` 从用户配置的目录读取私有本地上下文。这些路径不会随公开仓库一起发布。除非你明确希望 agent 读取，否则请把凭证、`.env` 文件、provider 日志和原始 transcript 留在这些目录之外。
+
+示例：
+
+```json
+{
+  "memory": {
+    "private_context_dirs": ["/home/example/concilium-private-overlay/memory"]
+  }
+}
+```
+
 ## 项目状态
 
 Concilium 目前适合作为本地 CLI 和 service 工作流的开发者预览工具。它不是托管平台，也不是面向终端用户的完整产品。
